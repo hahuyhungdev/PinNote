@@ -98,6 +98,25 @@ PinNote/
 │       └── ui-controls.js   # View modes, font zooming, opacity, sync scroll
 └── sample-vault/            # Starter markdown notes
 ```
+---
+
+## 📦 Building Standalone Windows Executable (.exe)
+
+```bash
+# Build Windows installer and portable .exe
+npm run build
+
+# Build portable .exe only
+npm run build:portable
+
+# Build unpacked directory with PinNote.exe
+npm run build:dir
+```
+
+The compiled binaries will be output to the `dist/` directory:
+- `dist/PinNote-Portable-1.0.0.exe` — Single portable standalone executable (no installation needed)
+- `dist/PinNote Setup 1.0.0.exe` — Windows NSIS installer
+- `dist/win-unpacked/PinNote.exe` — Standalone unpacked application
 
 ---
 
