@@ -1,0 +1,21 @@
+{
+  "name": "pinnote-markdown",
+  "version": "1.0.0",
+  "description": "Obsidian-like Markdown Take Note app for Windows with Always-On-Top screen pinning",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": ["markdown", "sticky-notes", "obsidian", "always-on-top", "windows", "note-taking"],
+  "author": "Antigravity",
+  "license": "MIT",
+  "dependencies": {
+    "fs-extra": "^11.2.0",
+    "highlight.js": "^11.9.0",
+    "katex": "^0.16.10",
+    "marked": "^12.0.1"
+  },
+  "devDependencies": {
+    "electron": "^29.1.5"
+  }
+}

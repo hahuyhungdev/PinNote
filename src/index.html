@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="warm-white">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PinNote - Markdown Sticky Notes</title>
+
+  <!-- KaTeX CSS -->
+  <link rel="stylesheet" href="../node_modules/katex/dist/katex.min.css">
+  <!-- Highlight.js CSS for warm paper code blocks -->
+  <link rel="stylesheet" href="../node_modules/highlight.js/styles/github.css">
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" class="app-container">
+
+    <!-- Sleek Custom Titlebar & Control Header -->
+    <header class="titlebar">
+      <div class="drag-region"></div>
+      
+      <!-- Brand & Status -->
+      <div class="brand">
+        <svg class="brand-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+        <span class="brand-title">PinNote</span>
+        <span id="active-note-badge" class="note-badge clickable-badge" title="Click to rename active note">Untitled.md</span>
+      </div>
+
+      <!-- Quick Actions & Toolbar -->
+      <div class="header-actions">
+        
+        <!-- 📌 POP OUT ACTIVE NOTE TO FLOATING DESKTOP STICKY -->
+        <button id="btn-popout-note" class="action-btn popout-btn" title="Open this note as a floating desktop sticky note (Ctrl+P)">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+          <span class="btn-text-pin">📌 Pop Out Note</span>
+        </button>
+
+        <!-- Opacity Slider -->
+        <div class="opacity-control" title="Window Transparency">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 3v18"/>
+          </svg>
+          <input type="range" id="opacity-slider" min="0.4" max="1.0" step="0.05" value="1.0">
+          <span id="opacity-value">100%</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Mode Toggle (Editor / Split / Preview) -->
+        <div class="segmented-control">
+          <button id="btn-mode-editor" class="segment-btn" title="Editor Only">Edit</button>
+          <button id="btn-mode-split" class="segment-btn active" title="Split View">Split</button>
+          <button id="btn-mode-preview" class="segment-btn" title="Preview Only">Preview</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Search / Quick Switcher -->
+        <button id="btn-quick-switcher" class="action-btn icon-only" title="Quick Switcher (Ctrl+K)">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </button>
+
+        <!-- Toggle Sidebar -->
+        <button id="btn-toggle-sidebar" class="action-btn icon-only" title="Toggle Sidebar (Ctrl+\)">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="9" y1="3" x2="9" y2="21"/>
+          </svg>
+        </button>
+
+        <div class="divider"></div>
+
+        <!-- Window System Controls -->
+        <div class="window-controls">
+          <button id="win-min" class="win-btn" title="Minimize">
+            <svg viewBox="0 0 12 12" width="10" height="10"><line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1.2"/></svg>
+          </button>
+          <button id="win-max" class="win-btn" title="Maximize/Restore">
+            <svg viewBox="0 0 12 12" width="10" height="10"><rect x="2" y="2" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+          </button>
+          <button id="win-close" class="win-btn win-close" title="Close">
+            <svg viewBox="0 0 12 12" width="10" height="10"><path d="M1,1 L11,11 M11,1 L1,11" stroke="currentColor" stroke-width="1.2"/></svg>
+          </button>
+        </div>
+
+      </div>
+    </header>
+
+    <!-- Main App Body -->
+    <div class="main-content">
+      
+      <!-- Vault Sidebar -->
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+          <div class="vault-info">
+            <span class="vault-label">VAULT</span>
+            <span id="vault-name-display" class="vault-name">Loading...</span>
+          </div>
+          <div class="vault-actions">
+            <button id="btn-refresh-vault" class="icon-btn" title="Reload Vault">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+            </button>
+            <button id="btn-change-vault" class="icon-btn" title="Open Vault Folder">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+            </button>
+            <button id="btn-new-note" class="icon-btn highlight" title="New Note (Ctrl+N)">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sidebar Search -->
+        <div class="sidebar-search">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" id="note-search-input" placeholder="Search notes or #tags...">
+          <button id="btn-clear-search" class="clear-search-btn" title="Clear Search" style="display:none;">&times;</button>
+        </div>
+
+        <!-- Note List Tree -->
+        <div id="note-tree" class="note-tree-container">
+          <!-- Dynamically populated -->
+        </div>
+
+        <!-- Tags List -->
+        <div class="sidebar-tags-section">
+          <div class="section-title">TAGS</div>
+          <div id="tag-cloud" class="tag-cloud">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </aside>
+
+      <!-- Editor & Preview Pane Area -->
+      <main class="editor-pane">
+        
+        <!-- Markdown Formatting Helper Bar -->
+        <div class="format-toolbar">
+          <button data-fmt="bold" class="fmt-btn" title="Bold (**text**)"><b>B</b></button>
+          <button data-fmt="italic" class="fmt-btn" title="Italic (*text*)"><i>I</i></button>
+          <button data-fmt="strikethrough" class="fmt-btn" title="Strikethrough (~~text~~)"><s>S</s></button>
+          <div class="tb-divider"></div>
+          <button data-fmt="h1" class="fmt-btn" title="Heading 1">H1</button>
+          <button data-fmt="h2" class="fmt-btn" title="Heading 2">H2</button>
+          <button data-fmt="h3" class="fmt-btn" title="Heading 3">H3</button>
+          <div class="tb-divider"></div>
+          <button data-fmt="task" class="fmt-btn" title="Task List (- [ ])">☑ Task</button>
+          <button data-fmt="list" class="fmt-btn" title="Bullet List (- )">• List</button>
+          <button data-fmt="quote" class="fmt-btn" title="Blockquote (> )">“” Quote</button>
+          <button data-fmt="code" class="fmt-btn" title="Code Block (```)">Code</button>
+          <button data-fmt="table" class="fmt-btn" title="Insert Table">Table</button>
+          <button data-fmt="callout" class="fmt-btn" title="Insert Obsidian Callout">Callout</button>
+          <button data-fmt="math" class="fmt-btn" title="Insert Math Equation">$$ Math</button>
+
+          <div class="tb-divider"></div>
+
+          <!-- Font Size / Zoom Controls -->
+          <button id="btn-zoom-out" class="fmt-btn" title="Decrease Font Size (Ctrl + -)">A-</button>
+          <span id="zoom-level-text" style="font-size:11px; color:var(--text-muted); padding:0 3px;">20px</span>
+          <button id="btn-zoom-in" class="fmt-btn" title="Increase Font Size (Ctrl + =)">A+</button>
+          
+          <div class="right-info">
+            <button id="btn-note-history" class="fmt-btn history-trigger-btn" title="Revision History (Ctrl + H)">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:text-bottom; margin-right:3px;">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              History
+            </button>
+            <span id="save-status-indicator" class="save-status saved">Saved</span>
+          </div>
+        </div>
+
+        <!-- View Split Workspace -->
+        <div id="workspace-container" class="workspace-container mode-split">
+          
+          <!-- Code Editor Area -->
+          <div id="editor-wrapper" class="editor-wrapper">
+            <textarea id="markdown-input" spellcheck="false" placeholder="Write your markdown here..."></textarea>
+          </div>
+
+          <!-- Live Rendered Markdown Preview Area -->
+          <div id="preview-wrapper" class="preview-wrapper">
+            <div id="markdown-preview" class="markdown-rendered"></div>
+          </div>
+
+        </div>
+
+      </main>
+
+    </div>
+
+    <!-- Status Bar Foot -->
+    <footer class="statusbar">
+      <div class="status-left">
+        <span id="current-vault-path" class="status-item path-text">...</span>
+      </div>
+      <div class="status-right">
+        <span id="word-count" class="status-item">0 words</span>
+        <span id="char-count" class="status-item">0 chars</span>
+        <span id="line-count" class="status-item">0 lines</span>
+      </div>
+    </footer>
+
+    <!-- Quick Switcher / Search Modal -->
+    <div id="quick-modal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-input-wrapper">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" id="quick-input" placeholder="Type note name to open or search..." autocomplete="off">
+          <span class="esc-badge">ESC</span>
+        </div>
+        <div id="quick-results" class="quick-results">
+          <!-- Populated -->
+        </div>
+        <div class="modal-footer">
+          <span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span>
+          <span><kbd>↵</kbd> Open</span>
+          <span><kbd>esc</kbd> Dismiss</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Note Revision History Modal -->
+    <div id="history-modal" class="modal-overlay hidden">
+      <div class="modal-card history-modal-card">
+        <div class="history-modal-header">
+          <div class="history-header-left">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <div>
+              <h3 id="history-modal-title" class="history-title">Revision History</h3>
+              <div id="history-modal-subtitle" class="history-subtitle">Note snapshots</div>
+            </div>
+          </div>
+          <button id="btn-close-history" class="win-btn win-close-modal" title="Close (ESC)">&times;</button>
+        </div>
+        
+        <div class="history-modal-body">
+          <!-- Snapshots Sidebar List -->
+          <div class="history-list-pane">
+            <div class="history-list-header">PAST SNAPSHOTS</div>
+            <div id="history-snapshots-list" class="history-snapshots-list">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+
+          <!-- Snapshot Preview Pane -->
+          <div class="history-preview-pane">
+            <div class="history-preview-header">
+              <div id="history-preview-meta" class="history-preview-meta">Select a version on the left to preview</div>
+              <div class="history-preview-actions">
+                <button id="btn-restore-version" class="btn-restore" disabled>
+                  ↺ Restore This Version
+                </button>
+              </div>
+            </div>
+            <div id="history-preview-content" class="history-preview-content markdown-rendered">
+              <div class="history-empty-hint">Select a snapshot to preview its contents.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer history-footer">
+          <span>💡 Restoring will save your current note first so you can always undo.</span>
+          <span><kbd>ESC</kbd> to close</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

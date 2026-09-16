@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Production & Packaging
+dist/
+out/
+build/
+
+# PinNote Local Cache & Vault Data
+.pinnote/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS specific files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Editor & IDE settings
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
