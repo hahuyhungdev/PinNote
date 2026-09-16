@@ -3,18 +3,48 @@ const path = require('path');
 const fs = require('fs-extra') || require('fs');
 const crypto = require('crypto');
 
+function logDebug(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  try {
+    fs.appendFileSync(path.join(__dirname, 'launch-debug.log'), line);
+  } catch (e) {}
+  console.log(msg);
+}
+
+process.on('uncaughtException', (err) => {
+  logDebug(`UNCAUGHT EXCEPTION: ${err.stack || err}`);
+});
+process.on('unhandledRejection', (reason) => {
+  logDebug(`UNHANDLED REJECTION: ${reason}`);
+});
+
 let mainWindow = null;
 const detachedWindows = new Map();
 
+logDebug(`Starting PinNote process PID: ${process.pid}, argv: ${JSON.stringify(process.argv)}`);
+
 // Single instance lock
-const gotTheLock = app.requestSingleInstanceLock();
+let gotTheLock = false;
+try {
+  gotTheLock = app.requestSingleInstanceLock();
+} catch (err) {
+  logDebug(`requestSingleInstanceLock exception: ${err}`);
+  gotTheLock = true;
+}
+
+logDebug(`Single instance lock acquired: ${gotTheLock}`);
 if (!gotTheLock) {
+  logDebug('Single instance lock denied. Calling app.quit()');
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    logDebug(`Second instance detected. WorkingDir: ${workingDirectory}`);
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.setAlwaysOnTop(true);
       mainWindow.focus();
+      mainWindow.setAlwaysOnTop(false);
     }
   });
 }
@@ -29,6 +59,7 @@ function createMainWindow() {
     transparent: false,
     backgroundColor: '#fcfbf9',
     titleBarStyle: 'hidden',
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: true,
@@ -40,8 +71,19 @@ function createMainWindow() {
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    mainWindow.focus();
+    logDebug('mainWindow ready-to-show event fired');
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    logDebug(`mainWindow render-process-gone: ${JSON.stringify(details)}`);
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    logDebug(`mainWindow did-fail-load: ${errorCode} - ${errorDescription}`);
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -58,11 +100,13 @@ function createMainWindow() {
   });
 
   mainWindow.on('closed', () => {
+    logDebug('mainWindow closed event fired');
     mainWindow = null;
   });
 }
 
 app.whenReady().then(() => {
+  logDebug('app whenReady fired');
   createMainWindow();
 
   app.on('activate', () => {
@@ -71,7 +115,15 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  logDebug('app window-all-closed fired');
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  logDebug('app before-quit fired');
+});
+app.on('will-quit', () => {
+  logDebug('app will-quit fired');
 });
 
 // ==========================================
