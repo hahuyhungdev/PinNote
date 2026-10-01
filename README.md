@@ -43,14 +43,20 @@ An elegant, lightweight Obsidian-inspired Markdown note-taking app with detached
 | `Ctrl + K` | Open Quick Switcher note finder |
 | `Ctrl + P` | Pop out active note to floating desktop sticky window |
 | `Ctrl + \` | Toggle sidebar visibility |
-| `Ctrl + =` / `Ctrl + +` | Zoom in (increase font size) |
-| `Ctrl + -` | Zoom out (decrease font size) |
-| `Ctrl + 0` | Reset font size to default (20px) |
+| `Ctrl + =` / `Ctrl + +` | Larger editor & preview text |
+| `Ctrl + -` | Smaller editor & preview text |
+| `Ctrl + 0` | Reset editor text size to default (20px) |
+| `Ctrl + Shift + =` | Larger interface (sidebar, toolbars, dialogs) |
+| `Ctrl + Shift + -` | Smaller interface |
+| `Ctrl + Shift + 0` | Reset interface size to 100% |
 | `Ctrl + B` | Bold selection / insert `****` |
 | `Ctrl + I` | Italicize selection / insert `**` |
 | `Tab` | Indent line(s) / tab out of closing tokens |
 | `Shift + Tab` | Unindent line(s) |
-| `Esc` | Close modal / cancel rename |
+| `Esc` | Close modal / cancel rename / clear sidebar search |
+| `F2` / `Enter` on a sidebar note | Rename / open it |
+
+The interface size is also adjustable from the status bar (`Interface − 100% +`); it is saved and shared with sticky windows.
 
 ---
 
@@ -79,8 +85,8 @@ npm start
 
 ```
 PinNote/
-├── main.js                  # Electron main process (lifecycle, IPC, window management)
-├── preload.js               # Context bridge secure API exposure
+├── main.js                  # Electron main process (lifecycle, IPC, vault path confinement)
+├── preload.js               # Context bridge: IPC API + sanitized markdown rendering
 ├── package.json
 ├── src/
 │   ├── index.html           # Main application shell
@@ -88,16 +94,39 @@ PinNote/
 │   ├── app.js               # Application orchestrator
 │   ├── sticky.html          # Floating sticky note UI
 │   ├── sticky.js            # Sticky note window controller
-│   └── modules/
-│       ├── markdown.js      # KaTeX, callouts, checklists, tags, code copy
+│   ├── lib/                 # Node-side, DOM-free (used by main, preload and tests)
+│   │   ├── markdown.js      # Marked + KaTeX + highlight.js + callouts, sanitized by DOMPurify
+│   │   └── text-utils.js    # Task toggling, tags, note-name & path safety helpers
+│   └── modules/             # Renderer ES modules (no Node access)
+│       ├── preview.js       # Bridge wrappers, checkbox/wiki-link wiring, code copy buttons
 │       ├── smart-editor.js  # Smart typing pairs, tab-out, indentation
 │       ├── note-manager.js  # Note lifecycle, DD-MM.md naming, pinned notes
 │       ├── history.js       # Revision snapshotting & relative timestamping
 │       ├── history-modal.js # Dual-pane history modal & 1-click restore
 │       ├── quick-switcher.js# Fuzzy search modal (Ctrl + K)
 │       └── ui-controls.js   # View modes, font zooming, opacity, sync scroll
+├── test/                    # node:test suites (npm test)
 └── sample-vault/            # Starter markdown notes
 ```
+---
+
+## 🧪 Tests
+
+```bash
+npm test
+```
+
+Covers markdown sanitizing (XSS), callouts, math, syntax highlighting, checkbox indexing, tag extraction, note-name sanitizing and vault path confinement.
+
+## 🔒 Security Model
+
+Notes are untrusted input (a vault can be any folder, including synced or downloaded ones), so:
+
+- Windows run with `contextIsolation: true` and `nodeIntegration: false`; the page has no `require`.
+- Markdown is rendered in the preload and sanitized with DOMPurify before it reaches the DOM; a CSP blocks inline and remote scripts.
+- File IPC only accepts paths inside the open vault; note names are sanitized (no `..`, separators or reserved names).
+- Links open externally only for `http`, `https` and `mailto`; the app window can never be navigated away.
+
 ---
 
 ## 📦 Building Standalone Windows Executable (.exe)
