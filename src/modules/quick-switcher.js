@@ -3,6 +3,13 @@
  * Fuzzy modal search for rapidly navigating between vault notes (Ctrl + K)
  */
 
+import { flattenNoteFiles, noteTitle } from './preview.js';
+
+const FILE_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+  <polyline points="14 2 14 8 20 8"/>
+</svg>`;
+
 class QuickSwitcher {
   constructor({ modalEl, inputEl, resultsEl, onSelectNote }) {
     this.modalEl = modalEl;
@@ -13,6 +20,7 @@ class QuickSwitcher {
     this.notes = [];
     this.filteredNotes = [];
     this.selectedIndex = 0;
+    this.returnFocusEl = null;
 
     this._bindEvents();
   }
@@ -27,6 +35,12 @@ class QuickSwitcher {
     });
 
     this.inputEl.addEventListener('keydown', (e) => {
+      // Escape must work even when nothing matches
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.close();
+        return;
+      }
       if (this.filteredNotes.length === 0) return;
 
       if (e.key === 'ArrowDown') {
@@ -39,14 +53,7 @@ class QuickSwitcher {
         this.updateSelection();
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        const target = this.filteredNotes[this.selectedIndex];
-        if (target) {
-          this.onSelectNote?.(target.path);
-          this.close();
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        this.close();
+        this.choose(this.filteredNotes[this.selectedIndex]);
       }
     });
   }
@@ -56,9 +63,9 @@ class QuickSwitcher {
   }
 
   open(notesTree) {
-    this.notes = (notesTree || []).filter(item => item.type === 'file');
+    this.returnFocusEl = document.activeElement;
+    this.notes = flattenNoteFiles(notesTree || []);
     this.inputEl.value = '';
-    this.selectedIndex = 0;
     this.modalEl.classList.remove('hidden');
     this.filter('');
     this.inputEl.focus();
@@ -66,13 +73,20 @@ class QuickSwitcher {
 
   close() {
     this.modalEl.classList.add('hidden');
+    this.returnFocusEl?.focus?.();
+  }
+
+  choose(note) {
+    if (!note) return;
+    this.close();
+    this.onSelectNote?.(note.path);
   }
 
   filter(query) {
     const q = query.trim().toLowerCase();
     this.filteredNotes = this.notes.filter(note => {
       if (!q) return true;
-      const title = note.name.replace(/\.md$/, '').toLowerCase();
+      const title = noteTitle(note.name).toLowerCase();
       const pathText = (note.relativePath || note.path).toLowerCase();
       return title.includes(q) || pathText.includes(q);
     });
@@ -85,33 +99,22 @@ class QuickSwitcher {
     this.resultsEl.innerHTML = '';
 
     if (this.filteredNotes.length === 0) {
-      this.resultsEl.innerHTML = '<div style="padding:14px; text-align:center; color:var(--text-faint); font-size:12px;">No matching notes found</div>';
+      const empty = document.createElement('div');
+      empty.className = 'quick-empty';
+      empty.textContent = 'No matching notes found';
+      this.resultsEl.appendChild(empty);
       return;
     }
 
     this.filteredNotes.forEach((note, idx) => {
       const itemEl = document.createElement('div');
       itemEl.className = `quick-result-item ${idx === this.selectedIndex ? 'selected' : ''}`;
-      
-      const title = note.name.replace(/\.md$/, '');
-      const pathRel = note.relativePath || note.path;
+      itemEl.setAttribute('role', 'option');
+      itemEl.innerHTML = `${FILE_ICON}<div class="result-text"><span class="result-title"></span><span class="result-path"></span></div>`;
+      itemEl.querySelector('.result-title').textContent = noteTitle(note.name);
+      itemEl.querySelector('.result-path').textContent = note.relativePath || note.path;
 
-      itemEl.innerHTML = `
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-        </svg>
-        <div class="result-text">
-          <span class="result-title">${title}</span>
-          <span class="result-path">${pathRel}</span>
-        </div>
-      `;
-
-      itemEl.addEventListener('click', () => {
-        this.onSelectNote?.(note.path);
-        this.close();
-      });
-
+      itemEl.addEventListener('click', () => this.choose(note));
       this.resultsEl.appendChild(itemEl);
     });
   }
@@ -120,11 +123,9 @@ class QuickSwitcher {
     const items = this.resultsEl.querySelectorAll('.quick-result-item');
     items.forEach((item, idx) => {
       item.classList.toggle('selected', idx === this.selectedIndex);
-      if (idx === this.selectedIndex) {
-        item.scrollIntoView({ block: 'nearest' });
-      }
+      if (idx === this.selectedIndex) item.scrollIntoView({ block: 'nearest' });
     });
   }
 }
 
-module.exports = { QuickSwitcher };
+export { QuickSwitcher };

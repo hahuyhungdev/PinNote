@@ -56,7 +56,7 @@ async function restoreNoteRevision(filePath, snapshotId) {
   return await window.pinNoteAPI.restoreNoteSnapshot(filePath, snapshotId);
 }
 
-module.exports = {
+export {
   formatRelativeTime,
   formatExactTime,
   recordNoteSnapshot,

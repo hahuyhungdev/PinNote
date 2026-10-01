@@ -19,9 +19,26 @@ const WRAP_PAIRS = {
 };
 
 /**
+ * Replace a range of the textarea through the browser's editing pipeline so the change
+ * lands on the native undo stack (Ctrl+Z / Ctrl+Y) and fires a regular 'input' event.
+ */
+function replaceRange(textarea, text, start, end) {
+  if (text === '' && start === end) return;
+  textarea.focus();
+  textarea.setSelectionRange(start, end);
+  const ok = text === ''
+    ? document.execCommand('delete')
+    : document.execCommand('insertText', false, text);
+  if (!ok) {
+    textarea.setRangeText(text, start, end, 'end');
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+}
+
+/**
  * Insert a Markdown formatting helper at cursor or around selection
  */
-function insertFormat(textarea, fmtType, onUpdate) {
+function insertFormat(textarea, fmtType) {
   const start = textarea.selectionStart;
   const end = textarea.selectionEnd;
   const selectedText = textarea.value.substring(start, end);
@@ -133,16 +150,15 @@ function insertFormat(textarea, fmtType, onUpdate) {
       return;
   }
 
-  textarea.setRangeText(replacement, start, end, 'end');
+  replaceRange(textarea, replacement, start, end);
   textarea.setSelectionRange(cursorStart, cursorEnd);
-  if (typeof onUpdate === 'function') onUpdate();
   textarea.focus();
 }
 
 /**
  * Attach smart Markdown keyboard listeners to a textarea
  */
-function setupSmartEditor(textarea, { onChange, onSave }) {
+function setupSmartEditor(textarea, { onSave } = {}) {
   if (!textarea) return;
 
   textarea.addEventListener('keydown', (e) => {
@@ -157,9 +173,8 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
         const closing = WRAP_PAIRS[e.key];
         const selected = textarea.value.substring(start, end);
         const wrapped = `${e.key}${selected}${closing}`;
-        textarea.setRangeText(wrapped, start, end, 'end');
+        replaceRange(textarea, wrapped, start, end);
         textarea.setSelectionRange(start + 1, end + 1);
-        if (onChange) onChange();
         return;
       }
 
@@ -167,9 +182,8 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
       if (start === end && AUTO_CLOSE_PAIRS[e.key]) {
         e.preventDefault();
         const closing = AUTO_CLOSE_PAIRS[e.key];
-        textarea.setRangeText(`${e.key}${closing}`, start, end, 'end');
+        replaceRange(textarea, `${e.key}${closing}`, start, end);
         textarea.setSelectionRange(start + 1, start + 1);
-        if (onChange) onChange();
         return;
       }
     }
@@ -181,9 +195,8 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
       const next = textarea.value[pos];
       if (prev && AUTO_CLOSE_PAIRS[prev] === next) {
         e.preventDefault();
-        textarea.setRangeText('', pos - 1, pos + 1, 'end');
+        replaceRange(textarea, '', pos - 1, pos + 1);
         textarea.setSelectionRange(pos - 1, pos - 1);
-        if (onChange) onChange();
         return;
       }
     }
@@ -212,7 +225,7 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
             if (line.startsWith('\t') || line.startsWith(' ')) return line.slice(1);
             return line;
           }).join('\n');
-          textarea.setRangeText(unindented, lineStart, lineEnd, 'end');
+          replaceRange(textarea, unindented, lineStart, lineEnd);
           textarea.setSelectionRange(lineStart, lineStart + unindented.length);
         } else {
           const currentLine = linesArr[0];
@@ -226,22 +239,20 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
             unindented = currentLine.slice(1);
           }
           if (removed > 0) {
-            textarea.setRangeText(unindented, lineStart, lineEnd, 'end');
+            replaceRange(textarea, unindented, lineStart, lineEnd);
             const newStart = Math.max(lineStart, start - removed);
             const newEnd = Math.max(lineStart, end - removed);
             textarea.setSelectionRange(newStart, newEnd);
           }
         }
-        if (onChange) onChange();
         return;
       }
 
       // Tab key
       if (isMultiLine) {
         const indented = linesArr.map(line => '  ' + line).join('\n');
-        textarea.setRangeText(indented, lineStart, lineEnd, 'end');
+        replaceRange(textarea, indented, lineStart, lineEnd);
         textarea.setSelectionRange(lineStart, lineStart + indented.length);
-        if (onChange) onChange();
         return;
       }
 
@@ -265,7 +276,6 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
 
         if (matched) {
           textarea.setSelectionRange(start + matched.length, start + matched.length);
-          if (onChange) onChange();
           return;
         }
       }
@@ -277,18 +287,17 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
 
       if (isListLine || isAtLineStart) {
         const indented = '  ' + currentLine;
-        textarea.setRangeText(indented, lineStart, lineEnd, 'end');
+        replaceRange(textarea, indented, lineStart, lineEnd);
         if (start === end) {
           textarea.setSelectionRange(start + 2, start + 2);
         } else {
           textarea.setSelectionRange(start + 2, end + 2);
         }
       } else {
-        textarea.setRangeText('  ', start, end, 'end');
+        replaceRange(textarea, '  ', start, end);
         textarea.setSelectionRange(start + 2, start + 2);
       }
 
-      if (onChange) onChange();
       return;
     }
 
@@ -307,11 +316,10 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
         const content = taskMatch[3].trim();
 
         if (content === '') {
-          textarea.setRangeText('', lineStart, start, 'end');
+          replaceRange(textarea, '', lineStart, start);
         } else {
-          textarea.setRangeText(`\n${indent}- [ ] `, start, start, 'end');
+          replaceRange(textarea, `\n${indent}- [ ] `, start, start);
         }
-        if (onChange) onChange();
         return;
       }
 
@@ -324,11 +332,10 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
         const content = bulletMatch[3].trim();
 
         if (content === '') {
-          textarea.setRangeText('', lineStart, start, 'end');
+          replaceRange(textarea, '', lineStart, start);
         } else {
-          textarea.setRangeText(`\n${indent}${bullet} `, start, start, 'end');
+          replaceRange(textarea, `\n${indent}${bullet} `, start, start);
         }
-        if (onChange) onChange();
         return;
       }
 
@@ -341,11 +348,10 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
         const content = numberMatch[3].trim();
 
         if (content === '') {
-          textarea.setRangeText('', lineStart, start, 'end');
+          replaceRange(textarea, '', lineStart, start);
         } else {
-          textarea.setRangeText(`\n${indent}${num + 1}. `, start, start, 'end');
+          replaceRange(textarea, `\n${indent}${num + 1}. `, start, start);
         }
-        if (onChange) onChange();
         return;
       }
     }
@@ -354,10 +360,10 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
     if (e.ctrlKey) {
       if (e.key.toLowerCase() === 'b') {
         e.preventDefault();
-        insertFormat(textarea, 'bold', onChange);
+        insertFormat(textarea, 'bold');
       } else if (e.key.toLowerCase() === 'i') {
         e.preventDefault();
-        insertFormat(textarea, 'italic', onChange);
+        insertFormat(textarea, 'italic');
       } else if (e.key.toLowerCase() === 's') {
         e.preventDefault();
         if (onSave) onSave();
@@ -366,7 +372,7 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
   });
 }
 
-module.exports = {
+export {
   setupSmartEditor,
   insertFormat
 };

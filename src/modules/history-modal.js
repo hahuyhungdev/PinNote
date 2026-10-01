@@ -3,8 +3,8 @@
  * Renders list of past snapshots, markdown preview, and restore mechanism
  */
 
-const { formatRelativeTime, formatExactTime, fetchNoteHistory, restoreNoteRevision } = require('./history');
-const { renderMarkdown, attachCodeCopyButtons } = require('./markdown');
+import { formatRelativeTime, formatExactTime, fetchNoteHistory, restoreNoteRevision } from './history.js';
+import { renderMarkdown, attachCodeCopyButtons } from './preview.js';
 
 class HistoryModal {
   constructor({ modalEl, onRestoreNote }) {
@@ -80,7 +80,7 @@ class HistoryModal {
       this.snapshots = await fetchNoteHistory(filePath);
       this.renderSnapshotsList(currentContent);
     } catch (err) {
-      this.listEl.innerHTML = `<div class="history-error">Error loading revisions: ${err.message}</div>`;
+      this.listEl.innerHTML = `<div class="history-error">Error loading revisions: ${this._escapeHtml(err.message)}</div>`;
     }
   }
 
@@ -95,8 +95,8 @@ class HistoryModal {
     if (!this.snapshots || this.snapshots.length === 0) {
       this.listEl.innerHTML = `
         <div class="history-empty-state">
-          <p style="font-weight: 500; margin-bottom: 6px;">No previous versions yet</p>
-          <small style="color: var(--text-faint); font-size: 11px;">Revisions are saved automatically as you write and edit.</small>
+          <p class="history-empty-title">No previous versions yet</p>
+          <small class="history-empty-sub">Revisions are saved automatically as you write and edit.</small>
         </div>
       `;
       if (this.previewMetaEl) this.previewMetaEl.textContent = 'No past revisions to display';
@@ -113,7 +113,7 @@ class HistoryModal {
       if (idx === 0) itemEl.classList.add('active');
 
       const isCurrentContent = currentContent !== undefined && snap.content === currentContent;
-      const tagText = snap.tag ? `<span class="history-tag">${snap.tag}</span>` : '';
+      const tagText = snap.tag ? `<span class="history-tag">${this._escapeHtml(snap.tag)}</span>` : '';
       const currentTag = isCurrentContent ? '<span class="history-tag current">Current</span>' : '';
 
       itemEl.innerHTML = `
@@ -167,4 +167,4 @@ class HistoryModal {
   }
 }
 
-module.exports = { HistoryModal };
+export { HistoryModal };
