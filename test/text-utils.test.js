@@ -14,7 +14,8 @@ const {
   NOTE_STATUSES,
   getNoteStatus,
   setNoteStatus,
-  frontmatterLength
+  frontmatterLength,
+  extractHeadings
 } = require('../src/lib/text-utils');
 
 test('toggleTaskCheckbox skips task-like lines inside fenced code blocks', () => {
@@ -187,4 +188,42 @@ test('tasks and tags inside front-matter are ignored', () => {
   const md = '---\nstatus: todo\nnote: "#nottag"\n---\n- [ ] real #tag';
   assert.deepEqual(extractTags(md), ['#tag']);
   assert.match(toggleTaskCheckbox(md, 0, true), /- \[x\] real/);
+});
+
+test('extractHeadings lists ATX headings with level, line and offset', () => {
+  const md = '# Sprint\n\nintro\n## Goals ##\n### Infra\n';
+  assert.deepEqual(extractHeadings(md), [
+    { level: 1, text: 'Sprint', line: 0, offset: 0 },
+    { level: 2, text: 'Goals', line: 3, offset: 16 },
+    { level: 3, text: 'Infra', line: 4, offset: 28 }
+  ]);
+});
+
+test('extractHeadings skips front-matter, code, #tags, indented code and empty headings', () => {
+  const md = [
+    '---', 'status: todo', '---',
+    '# Real',
+    '```', '# not a heading', '```',
+    '#tag line',
+    '    # indented code',
+    '#',
+    '> ## Quoted',
+    '   ### Three spaces ok'
+  ].join('\n');
+  assert.deepEqual(extractHeadings(md).map(h => [h.level, h.text, h.line]), [
+    [1, 'Real', 3],
+    [2, 'Quoted', 10],
+    [3, 'Three spaces ok', 11]
+  ]);
+});
+
+test('extractHeadings shows headings as plain text', () => {
+  const md = '## **Bold** and `code` with [a link](https://x.y) and [[Note|alias]] and [[Plain]] ![img](a.png) <b>tag</b>';
+  assert.equal(extractHeadings(md)[0].text, 'Bold and code with a link and alias and Plain img tag');
+});
+
+test('extractHeadings keeps offsets right with Windows line endings', () => {
+  const md = '# A\r\ntext\r\n## B\r\n';
+  const [, b] = extractHeadings(md);
+  assert.equal(md.slice(b.offset, b.offset + 4), '## B');
 });

@@ -133,6 +133,48 @@ function extractTags(markdownText) {
   return [...tags];
 }
 
+// ATX heading: up to 3 spaces, optional blockquote markers, 1-6 #, a space, text, optional closing #s
+const HEADING_RE = /^ {0,3}(?:>[ \t]?)*(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
+
+/** Heading text as the preview shows it: inline Markdown and HTML removed */
+function plainHeadingText(text) {
+  return text
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+    .replace(/\[\[([^\]]+)\]\]/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/(^|\W)_(.+?)_(?=\W|$)/g, '$1$2')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Headings for the outline, skipping front-matter and fenced code.
+ * `offset` is the index in `markdownText` where the heading line starts.
+ * @returns {{level: number, text: string, line: number, offset: number}[]}
+ */
+function extractHeadings(markdownText) {
+  const lines = String(markdownText ?? '').split('\n');
+  const offsets = [];
+  let pos = 0;
+  for (const line of lines) {
+    offsets.push(pos);
+    pos += line.length + 1;
+  }
+
+  const headings = [];
+  for (const [i, raw] of linesOutsideFences(lines)) {
+    const match = HEADING_RE.exec(raw.replace(/\r$/, ''));
+    const text = match && plainHeadingText(match[2] || '');
+    if (text) headings.push({ level: match[1].length, text, line: i, offset: offsets[i] });
+  }
+  return headings;
+}
+
 /**
  * Flatten a vault tree (directories with children) into a list of note files
  */
@@ -217,5 +259,6 @@ module.exports = {
   NOTE_STATUSES,
   getNoteStatus,
   setNoteStatus,
-  frontmatterLength
+  frontmatterLength,
+  extractHeadings
 };
