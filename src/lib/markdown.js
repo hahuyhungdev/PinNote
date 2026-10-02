@@ -67,12 +67,15 @@ const wikiLink = {
   start: (src) => src.indexOf('[['),
   tokenizer(src) {
     const match = /^\[\[([^\]\n]+)\]\]/.exec(src);
-    if (match) return { type: 'wikiLink', raw: match[0], target: match[1].trim() };
+    if (!match) return;
+    // Obsidian syntax: [[Note]], [[Note|shown text]], [[Note#Heading]]
+    const [link, alias] = match[1].split('|');
+    const target = link.split('#')[0].trim() || link.trim();
+    const label = alias?.trim() || link.trim();
+    return { type: 'wikiLink', raw: match[0], target, label };
   },
-  renderer: (token) => {
-    const safe = escapeHtml(token.target);
-    return `<a href="#" class="wiki-link" data-target="${safe}">${safe}</a>`;
-  }
+  renderer: (token) =>
+    `<a href="#" class="wiki-link" data-target="${escapeHtml(token.target)}">${escapeHtml(token.label)}</a>`
 };
 
 const CALLOUT_RE = new RegExp(

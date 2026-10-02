@@ -8,7 +8,8 @@ const {
   flattenNoteFiles,
   noteTitle,
   sanitizeNoteName,
-  isPathInside
+  isPathInside,
+  findNoteByTitle
 } = require('../src/lib/text-utils');
 
 test('toggleTaskCheckbox skips task-like lines inside fenced code blocks', () => {
@@ -111,4 +112,21 @@ test('isPathInside allows names that merely start with dots', () => {
   const w = path.win32;
   assert.equal(isPathInside('C:\\Vault\\..notes.md', 'C:\\Vault', w), true);
   assert.equal(isPathInside('C:\\Vault\\...\\x.md', 'C:\\Vault', w), true);
+});
+
+test('findNoteByTitle resolves wiki targets case-insensitively, by path, and by sanitized name', () => {
+  const files = [
+    { name: 'What.md', path: '/v/What.md', relativePath: 'What.md' },
+    { name: 'Plan.md', path: '/v/work/Plan.md', relativePath: path.join('work', 'Plan.md') },
+    { name: 'Plan.md', path: '/v/home/Plan.md', relativePath: path.join('home', 'Plan.md') },
+    { name: 'notes.txt', path: '/v/notes.txt', relativePath: 'notes.txt' }
+  ];
+  assert.equal(findNoteByTitle(files, 'what')?.path, '/v/What.md');
+  // "What?" was created as What.md because "?" is not allowed in file names
+  assert.equal(findNoteByTitle(files, 'What?')?.path, '/v/What.md');
+  assert.equal(findNoteByTitle(files, 'home/Plan')?.path, '/v/home/Plan.md');
+  assert.equal(findNoteByTitle(files, 'Plan')?.path, '/v/work/Plan.md');
+  assert.equal(findNoteByTitle(files, 'notes')?.path, '/v/notes.txt');
+  assert.equal(findNoteByTitle(files, 'Missing'), null);
+  assert.equal(findNoteByTitle(files, '  '), null);
 });

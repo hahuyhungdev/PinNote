@@ -81,6 +81,22 @@ function noteTitle(fileName) {
   return String(fileName).replace(/\.(md|txt)$/i, '');
 }
 
+/**
+ * Find the note a [[wiki link]] points to: a vault-relative path ("work/Plan") first, then the
+ * bare title, then the sanitized title (so [[What?]] finds the What.md it created).
+ */
+function findNoteByTitle(files = [], target) {
+  const normalize = (p) => noteTitle(String(p)).replace(/\\/g, '/').trim().toLowerCase();
+  const wanted = normalize(target ?? '');
+  if (!wanted) return null;
+  const sanitized = sanitizeNoteName(wanted).toLowerCase();
+
+  return files.find(f => normalize(f.relativePath || f.name) === wanted)
+    || files.find(f => normalize(f.name) === wanted)
+    || files.find(f => normalize(f.name) === sanitized)
+    || null;
+}
+
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
 
 /**
@@ -116,5 +132,6 @@ module.exports = {
   flattenNoteFiles,
   noteTitle,
   sanitizeNoteName,
-  isPathInside
+  isPathInside,
+  findNoteByTitle
 };

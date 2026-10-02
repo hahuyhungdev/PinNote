@@ -3,7 +3,7 @@
  * High-leverage coordinator binding Vault Management, Smart Editor, Note History, and Floating Sticky Notes
  */
 
-import { renderMarkdown, extractTags, enhancePreview, flattenNoteFiles, noteTitle } from './modules/preview.js';
+import { renderMarkdown, extractTags, enhancePreview, flattenNoteFiles, noteTitle, findNoteByTitle } from './modules/preview.js';
 import { setupSmartEditor, insertFormat } from './modules/smart-editor.js';
 import { recordNoteSnapshot } from './modules/history.js';
 import { HistoryModal } from './modules/history-modal.js';
@@ -347,7 +347,7 @@ function updatePreviewNow() {
       schedulePreviewUpdate();
     },
     onWikiLink: (targetTitle) => {
-      const target = allFiles().find(f => noteTitle(f.name).toLowerCase() === targetTitle.toLowerCase());
+      const target = findNoteByTitle(allFiles(), targetTitle);
       if (target) openNote(target.path);
       else createNewNote(targetTitle);
     }

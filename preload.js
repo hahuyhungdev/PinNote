@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 const { createMarkdownRenderer } = require('./src/lib/markdown');
-const { toggleTaskCheckbox, extractTags, flattenNoteFiles, noteTitle } = require('./src/lib/text-utils');
+const { toggleTaskCheckbox, extractTags, flattenNoteFiles, noteTitle, findNoteByTitle } = require('./src/lib/text-utils');
 
 // Rendering happens here, in the isolated preload world, so the page never needs Node access.
 // The renderer sanitizes with DOMPurify before HTML ever reaches the page.
@@ -65,7 +65,8 @@ const markdown = {
   toggleTaskCheckbox: (text, index, checked) => toggleTaskCheckbox(String(text), index, checked),
   extractTags: (text) => extractTags(String(text ?? '')),
   flattenNoteFiles: (items) => flattenNoteFiles(items),
-  noteTitle: (name) => noteTitle(name)
+  noteTitle: (name) => noteTitle(name),
+  findNoteByTitle: (files, target) => findNoteByTitle(files, target)
 };
 
 contextBridge.exposeInMainWorld('pinNoteAPI', api);

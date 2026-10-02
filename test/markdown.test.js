@@ -36,6 +36,13 @@ test('wiki link titles cannot break out of the attribute', () => {
   assert.equal(link.getAttribute('data-target'), 'x" onmouseover="alert(1)');
 });
 
+test('wiki links support |alias and #heading like Obsidian', () => {
+  const dom = toDom(render('[[Gamma|the alias]] [[Alpha#Intro]] [[Beta#Part|shown]]'));
+  const links = [...dom.querySelectorAll('a.wiki-link')];
+  assert.deepEqual(links.map(a => a.getAttribute('data-target')), ['Gamma', 'Alpha', 'Beta']);
+  assert.deepEqual(links.map(a => a.textContent), ['the alias', 'Alpha#Intro', 'shown']);
+});
+
 test('wiki links inside code are left alone', () => {
   const dom = toDom(render('`[[Not a link]]`'));
   assert.equal(dom.querySelector('a.wiki-link'), null);
