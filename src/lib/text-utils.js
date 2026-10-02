@@ -6,7 +6,8 @@
 const nodePath = require('path');
 
 const FENCE_RE = /^\s*(?:>\s*)*(```|~~~)/;
-const TASK_LINE_RE = /^(\s*(?:>\s*)*)([-*+]|\d+[.)])\s+\[[ xX]\](?=\s|$)/;
+// Same rule as marked: "[ ]" only renders as a checkbox when a space follows it
+const TASK_LINE_RE = /^(\s*(?:>\s*)*)([-*+]|\d+[.)])\s+\[[ xX]\](?= )/;
 
 /**
  * Yield [lineIndex, line] for every line that is not inside a fenced code block

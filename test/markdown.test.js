@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
 
 const { createMarkdownRenderer } = require('../src/lib/markdown');
+const { toggleTaskCheckbox } = require('../src/lib/text-utils');
 
 const { window } = new JSDOM('');
 const { render } = createMarkdownRenderer(window);
@@ -124,4 +125,23 @@ test('only markdown task checkboxes are marked as tasks', () => {
   assert.equal(all.length, 2);
   assert.equal(tasks.length, 1);
   assert.equal(tasks[0].closest('li').textContent.trim(), 'real task');
+});
+
+test('toggleTaskCheckbox index always matches the rendered checkbox order', () => {
+  const samples = [
+    '- [ ]\n- [ ] real task',
+    '* [x]\n- [ ] b\n- [ ] c',
+    '- [ ]\ttab\n- [ ] after tab',
+    '- [ ]   \n- [ ] after spaces',
+    '> - [ ] quoted\n1. [ ] numbered\n2) [ ] paren',
+    '```\n- [ ] in code\n```\n- [ ] outside'
+  ];
+  for (const md of samples) {
+    const count = toDom(render(md)).querySelectorAll('input[data-task]').length;
+    for (let i = 0; i < count; i++) {
+      const checked = [...toDom(render(toggleTaskCheckbox(md.replace(/\[x\]/g, '[ ]'), i, true))).querySelectorAll('input[data-task]')]
+        .map(box => box.checked);
+      assert.deepEqual(checked, checked.map((_, j) => j === i), `${JSON.stringify(md)} index ${i}`);
+    }
+  }
 });
