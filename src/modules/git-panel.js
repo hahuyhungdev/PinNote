@@ -36,6 +36,8 @@ class GitPanel {
       subtitle: $('git-subtitle'),
       unavailable: $('git-unavailable'),
       setup: $('git-setup'),
+      unsafe: $('git-unsafe'),
+      unsafeKeys: $('git-unsafe-keys'),
       repo: $('git-repo'),
       name: $('git-name'),
       email: $('git-email'),
@@ -283,6 +285,9 @@ class GitPanel {
     if (!s?.available) {
       item.textContent = 'Git unavailable';
       item.classList.add('unavailable');
+    } else if (s.unsafeConfig?.length) {
+      item.textContent = 'Git blocked';
+      item.classList.add('unavailable');
     } else if (!s.isRepo) {
       item.textContent = 'Set up Git';
     } else {
@@ -297,13 +302,18 @@ class GitPanel {
 
   _render() {
     const s = this.status || {};
+    const unsafe = Boolean(s.unsafeConfig?.length);
     this.el.unavailable.hidden = Boolean(s.available);
     this.el.setup.hidden = !s.available || s.isRepo;
-    this.el.repo.hidden = !s.isRepo;
-    this.el.subtitle.textContent = s.isRepo
-      ? `${s.branch || 'main'}${s.remoteUrl ? ` → ${s.remoteUrl}` : ' · no remote yet'}`
+    this.el.unsafe.hidden = !unsafe;
+    this.el.unsafeKeys.textContent = (s.unsafeConfig || []).join(', ');
+    this.el.repo.hidden = !s.isRepo || unsafe;
+    // Show where pushes really go; it can differ from the fetch URL
+    const target = s.pushUrl || s.remoteUrl;
+    this.el.subtitle.textContent = s.isRepo && !unsafe
+      ? `${s.branch || 'main'}${target ? ` → pushes to ${target}` : ' · no remote yet'}`
       : this.getVaultPath();
-    if (!s.isRepo) return;
+    if (!s.isRepo || unsafe) return;
 
     // Prefill settings once per opening so typing is never overwritten by a refresh
     if (!this._prefilled) {

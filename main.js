@@ -473,10 +473,22 @@ function historyHash(filePath) {
 }
 
 // Directories are only created when writing, so viewing a note leaves no .pinnote folder behind
+// A vault may plant .pinnote (or .pinnote/history) as a link to somewhere else on disk;
+// history is only kept in the vault when it really resolves inside the note's folder
+function historyDirIsSafe(noteDir, historyDir) {
+  const realNoteDir = realpathLoose(noteDir);
+  return isPathInside(realpathLoose(historyDir), realNoteDir);
+}
+
 function getNoteHistoryFilePath(filePath, { create = false } = {}) {
   const name = `${historyHash(filePath)}.json`;
   const vaultDir = path.join(path.dirname(filePath), '.pinnote', 'history');
   const fallbackDir = path.join(app.getPath('userData'), 'note-history');
+
+  if (!historyDirIsSafe(path.dirname(filePath), vaultDir)) {
+    if (create) fs.mkdirSync(fallbackDir, { recursive: true });
+    return path.join(fallbackDir, name);
+  }
 
   if (!create) {
     const fallback = path.join(fallbackDir, name);
@@ -720,12 +732,15 @@ ipcMain.handle('create-folder', (event, vaultPath, parentDir, name) => {
 const git = createGitService();
 const MAX_GUARD_BYTES = 64 * 1024;
 
-// Guard rules sit in .pinnote/ (git-ignored) so words like a company name are never pushed
-const guardFile = (vault) => path.join(vault, '.pinnote', 'guard.txt');
+// Guard rules live in PinNote's own settings, one file per vault: a vault is untrusted content and
+// must not be able to switch its own guard off, and words like a company name are never committed
+const guardFile = (vault) => path.join(app.getPath('userData'), 'guard', `${historyHash(vault)}.txt`);
 
 function readGuard(vault) {
   try {
-    return fs.readFileSync(guardFile(vault), 'utf-8');
+    const text = fs.readFileSync(guardFile(vault), 'utf-8');
+    // Never run without protection: an empty rule set falls back to the defaults
+    return parseRules(text).rules.length ? text : DEFAULT_GUARD_RULES;
   } catch (e) {
     return DEFAULT_GUARD_RULES;
   }
@@ -734,6 +749,30 @@ function readGuard(vault) {
 function writeGuard(vault, text) {
   fs.mkdirSync(path.dirname(guardFile(vault)), { recursive: true });
   fs.writeFileSync(guardFile(vault), text, 'utf-8');
+}
+
+/**
+ * Overriding the guard is confirmed here, in a native dialog the page cannot fake or skip:
+ * a "force" flag from the renderer alone is never enough.
+ */
+async function confirmGuardOverride(event, stage, findings) {
+  const shown = findings.slice(0, 12)
+    .map(f => `• ${f.line ? `${f.file}:${f.line}` : f.file} — ${f.label || f.rule}`)
+    .join('\n');
+  const more = findings.length > 12 ? `\n…and ${findings.length - 12} more` : '';
+  const { response } = await dialog.showMessageBox(BrowserWindow.fromWebContents(event.sender), {
+    type: 'warning',
+    title: 'PinNote commit guard',
+    message: stage === 'push' ? 'Push possibly sensitive content?' : 'Commit possibly sensitive content?',
+    detail: `${shown}${more}\n\n${stage === 'push'
+      ? 'These commits will be sent to the remote repository.'
+      : 'This will be recorded in Git history.'}`,
+    buttons: ['Cancel', stage === 'push' ? 'Push anyway' : 'Commit anyway'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true
+  });
+  return response === 1;
 }
 
 // After a pull, notes may have changed under open editors
@@ -769,9 +808,7 @@ ipcMain.handle('git-set-local-only', async (event, vaultPath, folders) => {
 });
 
 ipcMain.handle('git-init', async (event, vaultPath) => {
-  const dir = resolveVault(vaultPath);
-  await git.init(dir);
-  if (!fs.existsSync(guardFile(dir))) writeGuard(dir, DEFAULT_GUARD_RULES);
+  await git.init(resolveVault(vaultPath));
   return true;
 });
 
@@ -783,25 +820,43 @@ ipcMain.handle('git-set-remote', async (event, vaultPath, url) => {
 ipcMain.handle('git-set-identity', (event, vaultPath, name, email) =>
   git.setIdentity(resolveVault(vaultPath), name, email));
 
-ipcMain.handle('git-commit', (event, vaultPath, message, force) => {
+ipcMain.handle('git-commit', async (event, vaultPath, message, force) => {
   const dir = resolveVault(vaultPath);
-  return git.commit(dir, String(message ?? ''), { guard: readGuard(dir), force: force === true });
+  const options = { guard: readGuard(dir) };
+  const result = await git.commit(dir, String(message ?? ''), options);
+  if (result.blocked && force === true && await confirmGuardOverride(event, 'commit', result.blocked)) {
+    return git.commit(dir, String(message ?? ''), { ...options, force: true });
+  }
+  return result;
 });
 
 ipcMain.handle('git-pull', async (event, vaultPath) => notifyIfUpdated(await git.pull(resolveVault(vaultPath))));
 
-ipcMain.handle('git-push', (event, vaultPath, force) => {
+ipcMain.handle('git-push', async (event, vaultPath, force) => {
   const dir = resolveVault(vaultPath);
-  return git.push(dir, { guard: readGuard(dir), force: force === true });
+  const options = { guard: readGuard(dir) };
+  const result = await git.push(dir, options);
+  if (result.blocked && force === true && await confirmGuardOverride(event, 'push', result.blocked)) {
+    return git.push(dir, { ...options, force: true });
+  }
+  return result;
 });
 
-ipcMain.handle('git-sync', async (event, vaultPath, message, { forceCommit = false, forcePush = false } = {}) => {
+ipcMain.handle('git-sync', async (event, vaultPath, message, requested = {}) => {
   const dir = resolveVault(vaultPath);
-  return notifyIfUpdated(await git.sync(dir, String(message ?? ''), {
-    guard: readGuard(dir),
-    forceCommit: forceCommit === true,
-    forcePush: forcePush === true
-  }));
+  const text = String(message ?? '');
+  let options = { guard: readGuard(dir), forceCommit: false, forcePush: false };
+  // A stage the page asked to force is only forced after the native confirmation
+  for (;;) {
+    const result = await git.sync(dir, text, options);
+    const key = result.stage === 'push' ? 'forcePush' : 'forceCommit';
+    if (result.blocked && requested?.[key] === true && !options[key] &&
+      await confirmGuardOverride(event, result.stage, result.blocked)) {
+      options = { ...options, [key]: true };
+      continue;
+    }
+    return notifyIfUpdated(result);
+  }
 });
 
 ipcMain.handle('git-guard-read', (event, vaultPath) => readGuard(resolveVault(vaultPath)));

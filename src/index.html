@@ -369,6 +369,11 @@
             <button type="button" id="btn-git-init" class="git-btn primary">Initialize Git</button>
           </section>
 
+          <section id="git-unsafe" class="git-section git-guard" role="alert" hidden>
+            <div class="git-guard-title">Git is blocked for this vault</div>
+            <p class="git-hint">Its Git settings can run programs on your computer: <code id="git-unsafe-keys"></code>. A vault can come from anywhere, so PinNote won't run Git here. If you trust these settings, use Git directly; otherwise remove them from <code>.git/config</code>.</p>
+          </section>
+
           <div id="git-repo" hidden>
             <section id="git-guard" class="git-section git-guard" role="alert" hidden>
               <div class="git-guard-title">Possible sensitive content — <span id="git-guard-stage">commit</span> stopped</div>
@@ -420,7 +425,7 @@
             <section class="git-section">
               <button type="button" id="git-guard-rules-toggle" class="git-disclosure" aria-expanded="false" aria-controls="git-guard-editor">Commit guard rules</button>
               <div id="git-guard-editor" hidden>
-                <p class="git-hint">One rule per line: a word or phrase (case-insensitive) or a <code>/regular expression/</code>. Stored in <code>.pinnote/guard.txt</code>, never committed.</p>
+                <p class="git-hint">One rule per line: a word or phrase (case-insensitive) or a <code>/regular expression/</code>. Stored in PinNote's settings for this vault — not inside the vault — so the rules are never committed and a vault can't switch them off. "Commit anyway" always asks once more in a system dialog.</p>
                 <textarea id="git-guard-rules" class="git-input git-rules" spellcheck="false" rows="12" aria-label="Commit guard rules"></textarea>
                 <div class="git-actions">
                   <span id="git-guard-errors" class="git-guard-errors"></span>

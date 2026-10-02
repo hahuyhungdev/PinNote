@@ -21,12 +21,18 @@ const openPanel = async () => {
   await win.waitForSelector('#git-modal:not(.hidden)');
   await waitIdle();
 };
+// Playwright cannot click native dialogs; answer the main process's guard confirmation instead
+const answerNativeDialog = (response) => app.evaluate(({ dialog }, answer) => {
+  dialog.showMessageBox = async () => ({ response: answer });
+}, response);
 const changedPaths = async () => (await win.locator('#git-changes .git-change-path').allTextContents()).sort();
 
 test.before(async () => {
   sandbox = makeSandbox({
     'Note.md': '# Note\n',
-    'Work/Acme.md': '# Acme\n'
+    'Work/Acme.md': '# Acme\n',
+    // A vault cannot switch its own guard off: rules shipped inside it are ignored
+    '.pinnote/guard.txt': ''
   });
   const emptyConfig = path.join(sandbox.root, 'empty.gitconfig');
   fs.writeFileSync(emptyConfig, '');
@@ -51,7 +57,7 @@ test('the status bar offers Git setup and the panel initializes the vault', asyn
   await win.waitForSelector('#btn-git-sync');
   assert.ok(sandbox.isDir('.git'));
   assert.match(sandbox.read('.gitignore'), /^\.pinnote\/$/m);
-  assert.ok(fs.existsSync(path.join(sandbox.vault, '.pinnote', 'guard.txt')), 'guard rules are created');
+  assert.equal(sandbox.read('.pinnote/guard.txt'), '', 'nothing is written into the vault for the guard');
   assert.deepEqual(await changedPaths(), ['.gitignore', 'Note.md', 'Work/Acme.md']);
 });
 
@@ -103,6 +109,14 @@ test('the guard stops a commit with sensitive content until confirmed, and again
   assert.match(await win.textContent('#git-guard'), /nexon/);
   assert.equal(sh(sandbox.vault, 'rev-list', '--count', 'HEAD'), before, 'nothing committed yet');
 
+  // "Commit anyway" must also be confirmed in a native dialog owned by the main process
+  await answerNativeDialog(0);
+  await win.click('#btn-git-force');
+  await waitIdle();
+  assert.equal(sh(sandbox.vault, 'rev-list', '--count', 'HEAD'), before, 'cancelled in the native dialog');
+  await win.waitForSelector('#git-guard:not([hidden])');
+
+  await answerNativeDialog(1);
   await win.click('#btn-git-force');
   await waitIdle();
   assert.equal(Number(sh(sandbox.vault, 'rev-list', '--count', 'HEAD')), Number(before) + 1);
@@ -142,9 +156,25 @@ test('guard rules can be edited from the panel', async () => {
   await win.fill('#git-guard-rules', `${rules}\nproject-phoenix\n`);
   await win.click('#btn-git-guard-save');
   await waitIdle();
-  assert.match(fs.readFileSync(path.join(sandbox.vault, '.pinnote', 'guard.txt'), 'utf-8'), /^project-phoenix$/m);
+  const stored = fs.readdirSync(path.join(sandbox.userData, 'guard'));
+  assert.equal(stored.length, 1, 'rules live in PinNote settings, one file per vault');
+  assert.match(fs.readFileSync(path.join(sandbox.userData, 'guard', stored[0]), 'utf-8'), /^project-phoenix$/m);
+  assert.equal(sandbox.read('.pinnote/guard.txt'), '');
   await win.keyboard.press('Escape');
   assert.equal(await win.isVisible('#git-modal'), false);
+});
+
+test('a vault whose Git config can run programs is refused with an explanation', async () => {
+  const marker = path.join(sandbox.root, 'pwned.txt');
+  sh(sandbox.vault, 'config', 'core.fsmonitor', `node -e "require('fs').writeFileSync('${marker.replace(/\\/g, '/')}','x')"`);
+  await openPanel();
+  await win.waitForSelector('#git-unsafe:not([hidden])');
+  assert.match(await win.textContent('#git-unsafe'), /core\.fsmonitor/);
+  assert.equal(await win.isVisible('#btn-git-sync'), false);
+  assert.match(await win.textContent('#git-status-item'), /blocked/i);
+  assert.equal(fs.existsSync(marker), false);
+  sh(sandbox.vault, 'config', '--unset', 'core.fsmonitor');
+  await win.keyboard.press('Escape');
 });
 
 test('no renderer errors were thrown', () => {
