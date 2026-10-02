@@ -60,7 +60,23 @@ test('default rules catch common secrets and company names', () => {
     'token: eyJhbGciOi',
     '-----BEGIN RSA PRIVATE KEY-----',
     'AKIAIOSFODNN7EXAMPLE',
-    'ghp_0123456789abcdefghijklmnopqrstuvwxyzAB'
+    'ghp_0123456789abcdefghijklmnopqrstuvwxyzAB',
+    'nexondv.com wiki',
+    'CONFIDENTIAL: Q3 plan',
+    'Internal only - do not share',
+    'Tài liệu bảo mật',
+    'Thông tin nội bộ',
+    'mật khẩu: 123456',
+    'client_secret: abc',
+    'postgres://admin:S3cret@db.internal:5432/app',
+    'Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456',
+    'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U',
+    'sk-proj-abcdefghijklmnopqrstuvwx1234',
+    'AIzaSyA1234567890abcdefghijklmnopqrstuv',
+    'sk_live_abcdefghijklmnop1234',
+    'server at 192.168.1.20',
+    'vpn 10.0.12.5',
+    'Gọi 0912345678'
   ]) {
     assert.equal(matches(secret), true, secret);
   }
@@ -72,7 +88,12 @@ test('default rules leave ordinary notes alone', () => {
     'The key idea of the talk',
     'Tokenization in NLP',
     'Reset my password next week',
-    'Use a .env file for local settings'
+    'Use a .env file for local settings',
+    'The meeting was confidentially great',
+    'Version 1.2.3.4 released',
+    'https://github.com/me/notes',
+    'Ask-me-anything session',
+    'Order #20240912 shipped'
   ]) {
     assert.equal(matches(plain), false, plain);
   }

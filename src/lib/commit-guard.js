@@ -5,26 +5,51 @@
  */
 
 const DEFAULT_GUARD_RULES = `# PinNote commit guard
-# Commits and pushes stop (until you confirm) when an added line or a file name matches a rule.
-# One rule per line: a plain word (case-insensitive) or a /regular expression/flags.
-# This file lives in .pinnote/, so it is never committed.
+# Commits and pushes stop (until you confirm) when an added line, a file name or the commit
+# author matches a rule. One rule per line: a plain word/phrase (case-insensitive) or a
+# /regular expression/flags. This file lives in .pinnote/, so it is never committed.
 
 # Company and client names
 nexon
 
-# API keys and credentials
+# Confidentiality labels
+/\\bconfidential\\b/i
+/\\binternal[ -]only\\b/i
+/\\bdo not (share|distribute)\\b/i
+/\\bNDA\\b/
+bảo mật
+nội bộ
+mật khẩu
+
+# Credentials: key, secret, password and token assignments
 /api[_-]?key/i
-/(secret|token|password|passwd)\\s*[:=]/i
+/\\b(secret|client[_-]?secret|token|access[_-]?token|password|passwd|pwd)\\s*[:=]/i
 /^\\s*(export\\s+)?[A-Z][A-Z0-9_]*(KEY|SECRET|TOKEN|PASSWORD)\\s*=/
+/\\bBearer\\s+[A-Za-z0-9._~+\\/-]{20,}/
+/\\beyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}/
+/\\b[a-z][a-z0-9+.-]*:\\/\\/[^\\s:@\\/]+:[^\\s@\\/]+@/i
 
 # .env files
 /(^|\\/)\\.env(\\.[\\w.-]+)?$/i
 
-# Private keys and well-known token formats
+# Private keys and provider key formats (AWS, GitHub, Slack, OpenAI, Stripe, Google)
 /-----BEGIN [A-Z ]*PRIVATE KEY-----/
-/AKIA[0-9A-Z]{16}/
-/gh[pousr]_[A-Za-z0-9]{36,}/
-/xox[baprs]-[A-Za-z0-9-]{10,}/
+/\\bAKIA[0-9A-Z]{16}\\b/
+/\\bgh[pousr]_[A-Za-z0-9]{36,}/
+/\\bxox[baprs]-[A-Za-z0-9-]{10,}/
+/\\bsk-(proj-)?[A-Za-z0-9_-]{20,}/
+/\\bsk_live_[A-Za-z0-9]{16,}/
+/\\bAIza[0-9A-Za-z_-]{35}\\b/
+
+# Internal network addresses
+/\\b(10\\.\\d{1,3}|192\\.168|172\\.(1[6-9]|2\\d|3[01]))\\.\\d{1,3}\\.\\d{1,3}\\b/
+
+# Personal data: Vietnamese mobile numbers
+/(^|\\D)(\\+84|0)[35789]\\d{8}(?!\\d)/
+
+# Optional (noisy) — delete the leading "# " to turn on:
+# /[\\w.+-]+@[\\w-]+\\.[\\w.-]+/
+# /\\b(?:\\d[ -]?){13,16}\\b/
 `;
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -36,7 +61,8 @@ function parseRules(text) {
   const rules = [];
   const errors = [];
   for (const raw of String(text ?? '').split(/\r?\n/)) {
-    const line = raw.trim();
+    // NFC so Vietnamese rules match however the text was composed
+    const line = raw.trim().normalize('NFC');
     if (!line || line.startsWith('#')) continue;
     const regex = /^\/(.+)\/([a-z]*)$/.exec(line);
     try {
@@ -78,7 +104,7 @@ function scanDiff(diffText, rules) {
     }
     if (!file || !line.startsWith('+')) continue;
 
-    const text = line.slice(1);
+    const text = line.slice(1).normalize('NFC');
     const rule = rules.find(r => r.re.test(text));
     if (rule) findings.push({ file, line: lineNo, rule: rule.source, excerpt: excerptOf(text) });
     lineNo++;
@@ -89,7 +115,7 @@ function scanDiff(diffText, rules) {
 /** Flag file names that match a rule (e.g. ".env", "Nexon roadmap.md") */
 function scanPaths(paths, rules) {
   return paths.flatMap((file) => {
-    const rule = rules.find(r => r.re.test(file));
+    const rule = rules.find(r => r.re.test(file.normalize('NFC')));
     return rule ? [{ file, line: null, rule: rule.source, excerpt: file }] : [];
   });
 }
