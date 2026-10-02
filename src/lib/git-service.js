@@ -7,6 +7,7 @@
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { parseRules, scanDiff, scanPaths } = require('./commit-guard');
 
 const NETWORK_TIMEOUT = 120000;
 const LOCAL_TIMEOUT = 30000;
@@ -172,11 +173,31 @@ function createGitService({ gitPath = 'git', env = {} } = {}) {
     return status(dir);
   }
 
-  async function commit(dir, message = '') {
+  // Readable, unprefixed-config-proof patches for the guard scan
+  const PATCH_ARGS = ['--no-color', '--no-ext-diff', '-U0', '--src-prefix=a/', '--dst-prefix=b/'];
+  const unquote = (p) => p.replace(/^"(.*)"$/, '$1');
+
+  function runGuard(guard, paths, patch) {
+    const { rules } = parseRules(guard);
+    return [...scanPaths(paths.map(unquote), rules), ...scanDiff(patch, rules)];
+  }
+
+  /**
+   * Stage everything and commit. With `guard` rules, matching additions block the commit
+   * (returned as `blocked`) unless `force` is set.
+   */
+  async function commit(dir, message = '', { guard = null, force = false } = {}) {
     await requireRepo(dir);
     await run(dir, ['add', '-A']);
     const { changes } = parseStatus(await run(dir, ['status', '--porcelain=v2', '-z']));
     if (changes.length === 0) return { committed: false, message: null };
+
+    if (guard && !force) {
+      const patch = await run(dir, ['-c', 'core.quotePath=false', 'diff', '--cached', ...PATCH_ARGS]);
+      const blocked = runGuard(guard, changes.filter(c => c.code !== 'D').map(c => c.path), patch);
+      if (blocked.length) return { committed: false, message: null, blocked };
+    }
+
     const text = String(message ?? '').trim() || defaultCommitMessage(changes);
     await run(dir, ['commit', '-m', text]);
     return { committed: true, message: text };
@@ -216,23 +237,62 @@ function createGitService({ gitPath = 'git', env = {} } = {}) {
     return { updated: before !== (await tryRun(dir, ['rev-parse', 'HEAD'])) };
   }
 
-  async function push(dir) {
+  /**
+   * Push the current branch. With `guard` rules, every outgoing commit (including ones made
+   * outside PinNote) is scanned first; matches are returned as `blocked` unless `force` is set.
+   */
+  async function push(dir, { guard = null, force = false } = {}) {
     await requireRepo(dir);
     if (!(await remoteUrl(dir))) throw new Error('Connect a remote repository first');
+
+    if (guard && !force) {
+      const { upstream } = parseStatus(await run(dir, ['status', '--porcelain=v2', '--branch', '-z']));
+      const range = upstream ? `${upstream}..HEAD` : 'HEAD';
+      // Each commit's own patch, so a secret added and later deleted is still caught
+      const patch = await run(dir, ['-c', 'core.quotePath=false', 'log', '-p', '--format=', ...PATCH_ARGS, range]);
+      const names = await run(dir, ['-c', 'core.quotePath=false', 'log', '--name-only', '--diff-filter=d', '--format=', range]);
+      const blocked = runGuard(guard, [...new Set(names.split('\n').filter(Boolean))], patch);
+      if (blocked.length) return { pushed: false, blocked };
+    }
+
     await run(dir, ['push', '-u', 'origin', 'HEAD'], NETWORK_TIMEOUT);
     return { pushed: true };
   }
 
   /** Commit local edits, then pull (rebase) and push when a remote is connected */
-  async function sync(dir, message = '') {
-    const { committed } = await commit(dir, message);
-    if (!(await remoteUrl(dir))) return { committed, updated: false, pushed: false };
-    const { updated } = await pull(dir);
-    await push(dir);
-    return { committed, updated, pushed: true };
+  async function sync(dir, message = '', guardOptions = {}) {
+    const done = { committed: false, updated: false, pushed: false };
+    const committed = await commit(dir, message, guardOptions);
+    if (committed.blocked) return { ...done, blocked: committed.blocked };
+    done.committed = committed.committed;
+
+    if (!(await remoteUrl(dir))) return done;
+    done.updated = (await pull(dir)).updated;
+    const pushed = await push(dir, guardOptions);
+    if (pushed.blocked) return { ...done, blocked: pushed.blocked };
+    return { ...done, pushed: true };
   }
 
-  return { available, status, init, setRemote, commit, pull, push, sync };
+  /** Name/email used for this vault's commits (stored in the vault repo only, not globally) */
+  async function identity(dir) {
+    return {
+      name: await tryRun(dir, ['config', 'user.name']),
+      email: await tryRun(dir, ['config', 'user.email'])
+    };
+  }
+
+  async function setIdentity(dir, name, email) {
+    await requireRepo(dir);
+    const cleanName = String(name ?? '').trim();
+    const cleanEmail = String(email ?? '').trim();
+    if (!cleanName || /[\r\n<>]/.test(cleanName)) throw new Error('Please enter a name');
+    if (!/^[^\s@<>]+@[^\s@<>]+$/.test(cleanEmail)) throw new Error('Please enter a valid email');
+    await run(dir, ['config', 'user.name', cleanName]);
+    await run(dir, ['config', 'user.email', cleanEmail]);
+    return identity(dir);
+  }
+
+  return { available, status, init, setRemote, commit, pull, push, sync, identity, setIdentity };
 }
 
 module.exports = { createGitService, parseStatus, isValidRemoteUrl, defaultCommitMessage };

@@ -163,3 +163,59 @@ test('a conflicting pull is aborted cleanly and keeps the local commit', async (
 test('git commands fail with a readable message outside a repository', async () => {
   await assert.rejects(git.commit(path.join(tmp, 'plain'), 'x'), /not a git repository/i);
 });
+
+test('the commit guard blocks matching added lines and file names until forced', async () => {
+  const dir = path.join(tmp, 'guarded');
+  write(dir, 'Clean.md', '# Clean\n');
+  await git.init(dir);
+  await git.commit(dir, 'Start');
+  const guard = 'nexon\n/api[_-]?key/i';
+
+  write(dir, 'Meeting.md', '# Meeting\n\nPricing call with Nexon\n');
+  const blocked = await git.commit(dir, 'Meeting', { guard });
+  assert.equal(blocked.committed, false);
+  assert.deepEqual(blocked.blocked.map(f => [f.file, f.line, f.rule]), [['Meeting.md', 3, 'nexon']]);
+  assert.equal(sh(dir, 'log', '-1', '--format=%s'), 'Start', 'nothing was committed');
+
+  // The same scan runs inside sync, which stops before pulling or pushing
+  assert.equal((await git.sync(dir, 'Meeting', { guard })).blocked.length, 1);
+
+  const forced = await git.commit(dir, 'Meeting', { guard, force: true });
+  assert.equal(forced.committed, true);
+
+  write(dir, 'Nexon plan.md', '# Plan\n');
+  const byName = await git.commit(dir, '', { guard });
+  assert.deepEqual(byName.blocked.map(f => [f.file, f.line]), [['Nexon plan.md', null]]);
+  await git.commit(dir, 'Plan', { guard, force: true });
+});
+
+test('push re-checks outgoing commits, including ones made outside PinNote', async () => {
+  const dir = path.join(tmp, 'guarded');
+  const remote = path.join(tmp, 'guarded-remote.git');
+  sh(tmp, 'init', '--bare', '-b', 'main', remote);
+  await git.setRemote(dir, remote);
+  const guard = '/api[_-]?key/i';
+
+  // Nothing pushed yet: the whole history is outgoing and is clean for this rule
+  assert.deepEqual(await git.push(dir, { guard }), { pushed: true });
+
+  write(dir, 'Config.md', 'apiKey: 12345\n');
+  sh(dir, 'add', '-A');
+  sh(dir, 'commit', '-m', 'Committed in a terminal');
+  const blocked = await git.push(dir, { guard });
+  assert.equal(blocked.pushed, false);
+  assert.deepEqual(blocked.blocked.map(f => [f.file, f.line]), [['Config.md', 1]]);
+  assert.notEqual(sh(remote, 'log', '-1', '--format=%s', 'main'), 'Committed in a terminal');
+
+  assert.deepEqual(await git.push(dir, { guard, force: true }), { pushed: true });
+  assert.equal(sh(remote, 'log', '-1', '--format=%s', 'main'), 'Committed in a terminal');
+});
+
+test('setIdentity stores the commit author in the vault repo only', async () => {
+  const dir = path.join(tmp, 'guarded');
+  assert.deepEqual(await git.setIdentity(dir, ' hahuyhungdev ', 'hahuyhungdev@gmail.com'),
+    { name: 'hahuyhungdev', email: 'hahuyhungdev@gmail.com' });
+  assert.equal(sh(dir, 'config', '--local', 'user.email'), 'hahuyhungdev@gmail.com');
+  await assert.rejects(git.setIdentity(dir, 'x', 'not-an-email'), /valid email/);
+  await assert.rejects(git.setIdentity(dir, '', 'a@b.c'), /name/);
+});
