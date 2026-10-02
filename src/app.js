@@ -45,6 +45,7 @@ const dom = {
   // Sidebar & Vault
   btnToggleSidebar: $('btn-toggle-sidebar'),
   sidebar: $('sidebar'),
+  sidebarResizer: $('sidebar-resizer'),
   vaultNameDisplay: $('vault-name-display'),
   currentVaultPath: $('current-vault-path'),
   btnRefreshVault: $('btn-refresh-vault'),

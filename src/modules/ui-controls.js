@@ -12,6 +12,11 @@ const FONT_DEFAULT = 20;
 const UI_SCALES = [0.875, 1, 1.125, 1.25, 1.375, 1.5];
 const UI_SCALE_DEFAULT = 1;
 
+// Sidebar width in CSS px; the stylesheet also clamps it to 12rem..60vw
+const SIDEBAR_STEP = 16;
+const SIDEBAR_MIN_REM = 12;
+const SIDEBAR_MAX_VW = 0.6;
+
 function readNumber(key, fallback) {
   const val = parseFloat(localStorage.getItem(key));
   return Number.isFinite(val) ? val : fallback;
@@ -78,6 +83,7 @@ class UIControls {
     });
 
     this.setupSyncScrolling();
+    this.setupSidebarResize();
   }
 
   _renderOpacity(val) {
@@ -137,6 +143,87 @@ class UIControls {
     document.documentElement.style.setProperty('--ui-scale', String(clamped));
     if (this.dom.uiScaleText) this.dom.uiScaleText.textContent = `${Math.round(clamped * 100)}%`;
     localStorage.setItem('pinnote_ui_scale', clamped);
+    this._renderSidebarWidth();
+  }
+
+  _sidebarBounds() {
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    return { min: SIDEBAR_MIN_REM * rem, max: Math.max(SIDEBAR_MIN_REM * rem, window.innerWidth * SIDEBAR_MAX_VW) };
+  }
+
+  /** @param {number|null} width px, or null for the stylesheet default */
+  setSidebarWidth(width) {
+    const root = document.documentElement.style;
+    if (width === null) {
+      root.removeProperty('--sidebar-w');
+      localStorage.removeItem('pinnote_sidebar_width');
+    } else {
+      const { min, max } = this._sidebarBounds();
+      const clamped = Math.round(Math.max(min, Math.min(max, width)));
+      root.setProperty('--sidebar-w', `${clamped}px`);
+      localStorage.setItem('pinnote_sidebar_width', clamped);
+    }
+    this._renderSidebarWidth();
+  }
+
+  _renderSidebarWidth() {
+    const { sidebar, sidebarResizer } = this.dom;
+    if (!sidebar || !sidebarResizer) return;
+    const { min, max } = this._sidebarBounds();
+    sidebarResizer.setAttribute('aria-valuemin', String(Math.round(min)));
+    sidebarResizer.setAttribute('aria-valuemax', String(Math.round(max)));
+    sidebarResizer.setAttribute('aria-valuenow', String(Math.round(sidebar.getBoundingClientRect().width)));
+  }
+
+  setupSidebarResize() {
+    const { sidebar, sidebarResizer: handle } = this.dom;
+    if (!sidebar || !handle) return;
+
+    const saved = readNumber('pinnote_sidebar_width', null);
+    if (saved !== null) this.setSidebarWidth(saved);
+    else this._renderSidebarWidth();
+
+    const layout = handle.parentElement;
+    let startX = 0;
+    let startWidth = 0;
+
+    const onMove = (e) => this.setSidebarWidth(startWidth + e.clientX - startX);
+    const stop = (e) => {
+      handle.releasePointerCapture?.(e.pointerId);
+      handle.classList.remove('dragging');
+      layout.classList.remove('resizing');
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', stop);
+      handle.removeEventListener('pointercancel', stop);
+    };
+
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      startX = e.clientX;
+      startWidth = sidebar.getBoundingClientRect().width;
+      handle.setPointerCapture(e.pointerId);
+      handle.classList.add('dragging');
+      layout.classList.add('resizing');
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', stop);
+      handle.addEventListener('pointercancel', stop);
+    });
+
+    handle.addEventListener('dblclick', () => this.setSidebarWidth(null));
+
+    handle.addEventListener('keydown', (e) => {
+      const width = sidebar.getBoundingClientRect().width;
+      if (e.key === 'ArrowLeft') this.setSidebarWidth(width - SIDEBAR_STEP);
+      else if (e.key === 'ArrowRight') this.setSidebarWidth(width + SIDEBAR_STEP);
+      else if (e.key === 'Home') this.setSidebarWidth(0);
+      else if (e.key === 'End') this.setSidebarWidth(Infinity);
+      else return;
+      e.preventDefault();
+    });
+
+    // Keep the reported value honest when the window or interface scale changes the clamp
+    window.addEventListener('resize', () => this._renderSidebarWidth());
   }
 
   setupSyncScrolling() {

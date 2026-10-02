@@ -150,37 +150,40 @@
           </div>
         </div>
       </aside>
+      <div id="sidebar-resizer" class="sidebar-resizer" role="separator" aria-orientation="vertical" aria-controls="sidebar" aria-label="Resize sidebar" title="Drag to resize · double-click to reset" tabindex="0"></div>
 
       <!-- Editor & Preview Pane Area -->
       <main class="editor-pane">
         
         <!-- Markdown Formatting Helper Bar -->
-        <div class="format-toolbar" role="toolbar" aria-label="Formatting">
-          <button data-fmt="bold" class="fmt-btn" title="Bold (**text**)"><b>B</b></button>
-          <button data-fmt="italic" class="fmt-btn" title="Italic (*text*)"><i>I</i></button>
-          <button data-fmt="strikethrough" class="fmt-btn" title="Strikethrough (~~text~~)"><s>S</s></button>
-          <div class="tb-divider"></div>
-          <button data-fmt="h1" class="fmt-btn" title="Heading 1">H1</button>
-          <button data-fmt="h2" class="fmt-btn" title="Heading 2">H2</button>
-          <button data-fmt="h3" class="fmt-btn" title="Heading 3">H3</button>
-          <div class="tb-divider"></div>
-          <button data-fmt="task" class="fmt-btn" title="Task List (- [ ])">☑ Task</button>
-          <button data-fmt="list" class="fmt-btn" title="Bullet List (- )">• List</button>
-          <button data-fmt="quote" class="fmt-btn" title="Blockquote (> )">“” Quote</button>
-          <button data-fmt="code" class="fmt-btn" title="Code Block (```)">Code</button>
-          <button data-fmt="table" class="fmt-btn" title="Insert Table">Table</button>
-          <button data-fmt="callout" class="fmt-btn" title="Insert Obsidian Callout">Callout</button>
-          <button data-fmt="math" class="fmt-btn" title="Insert Math Equation">$$ Math</button>
+        <div class="format-toolbar">
+          <div class="format-tools" role="toolbar" aria-label="Formatting">
+            <button data-fmt="bold" class="fmt-btn" title="Bold (**text**)"><b>B</b></button>
+            <button data-fmt="italic" class="fmt-btn" title="Italic (*text*)"><i>I</i></button>
+            <button data-fmt="strikethrough" class="fmt-btn" title="Strikethrough (~~text~~)"><s>S</s></button>
+            <div class="tb-divider"></div>
+            <button data-fmt="h1" class="fmt-btn" title="Heading 1">H1</button>
+            <button data-fmt="h2" class="fmt-btn" title="Heading 2">H2</button>
+            <button data-fmt="h3" class="fmt-btn" title="Heading 3">H3</button>
+            <div class="tb-divider"></div>
+            <button data-fmt="task" class="fmt-btn" title="Task List (- [ ])">☑ Task</button>
+            <button data-fmt="list" class="fmt-btn" title="Bullet List (- )">• List</button>
+            <button data-fmt="quote" class="fmt-btn" title="Blockquote (> )">“” Quote</button>
+            <button data-fmt="code" class="fmt-btn" title="Code Block (```)">Code</button>
+            <button data-fmt="table" class="fmt-btn" title="Insert Table">Table</button>
+            <button data-fmt="callout" class="fmt-btn" title="Insert Obsidian Callout">Callout</button>
+            <button data-fmt="math" class="fmt-btn" title="Insert Math Equation">$$ Math</button>
 
-          <div class="tb-divider"></div>
+            <div class="tb-divider"></div>
 
-          <!-- Font Size / Zoom Controls -->
-          <div class="zoom-group" title="Editor text size">
-            <button id="btn-zoom-out" class="fmt-btn" title="Smaller editor text (Ctrl + -)" aria-label="Smaller editor text">A−</button>
-            <span id="zoom-level-text" class="zoom-level">20px</span>
-            <button id="btn-zoom-in" class="fmt-btn" title="Larger editor text (Ctrl + =)" aria-label="Larger editor text">A+</button>
+            <!-- Font Size / Zoom Controls -->
+            <div class="zoom-group" title="Editor text size">
+              <button id="btn-zoom-out" class="fmt-btn" title="Smaller editor text (Ctrl + -)" aria-label="Smaller editor text">A−</button>
+              <span id="zoom-level-text" class="zoom-level">20px</span>
+              <button id="btn-zoom-in" class="fmt-btn" title="Larger editor text (Ctrl + =)" aria-label="Larger editor text">A+</button>
+            </div>
           </div>
-          
+
           <div class="right-info">
             <button id="btn-note-history" class="fmt-btn history-trigger-btn" title="Revision History (Ctrl + H)">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
