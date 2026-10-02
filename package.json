@@ -1,7 +1,7 @@
 {
   "name": "pinnote-markdown",
   "version": "1.0.0",
-  "description": "Obsidian-like Markdown Take Note app for Windows with Always-On-Top screen pinning",
+  "description": "Obsidian-style Markdown notes for Windows with always-on-top sticky notes, note status, folders, an outline and Git sync with a commit guard",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -20,7 +20,7 @@
     "windows",
     "note-taking"
   ],
-  "author": "Antigravity",
+  "author": "hahuyhungdev",
   "license": "MIT",
   "build": {
     "appId": "com.pinnote.app",

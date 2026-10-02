@@ -1,41 +1,73 @@
 # PinNote 📌
 
-An elegant, lightweight Obsidian-inspired Markdown note-taking app with detached Always-On-Top desktop sticky notes, full revision history, KaTeX math, and a cozy Warm White aesthetic.
+An Obsidian-style Markdown notes app for Windows. Write in a warm, paper-like editor, pin any note to your desktop as an always-on-top sticky window, track each note's status, organize notes in folders, and back the whole vault up to GitHub, with a commit guard that stops company names and secrets from leaving your machine.
+
+Notes are plain `.md` files in a folder you choose, so they stay readable in any editor (including Obsidian).
 
 ---
 
 ## ✨ Features
 
-- **Warm White Aesthetic**: Thoughtfully tuned warm-white paper palette (`#fcfbf9`) designed for long writing sessions with zero eye strain.
-- **Detached Floating Sticky Notes**: Pop out any note into an independent, compact desktop sticky window with **Always-on-Top** pinning and opacity control.
-- **Smart Markdown Editor**:
-  - Auto-closing brackets and quotes (`()`, `[]`, `{}`, `""`, `` ` ``); typing the closer steps over it instead of doubling it.
-  - Smart natural single-quote typing (contractions like *don't*, *it's* work seamlessly).
-  - Tab-out navigation over markdown markers (`**bold|**` → `**bold**|`).
-  - Intelligent list and task list continuation on Enter (`- [ ]`, `- `, `1. `).
-  - Multi-line indentation (`Tab`) and unindentation (`Shift + Tab`).
-  - Quick format helpers (`Ctrl + B`, `Ctrl + I`, `Ctrl + S`); heading, list, task and quote buttons apply to the current or every selected line.
-- **Rich Markdown Rendering**:
-  - Obsidian-style Callouts (`> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, etc.).
-  - KaTeX mathematical equations (`$$ E = mc^2 $$` and inline math).
-  - Code syntax highlighting with one-click copy buttons.
-  - Interactive checklists with live two-way synchronization.
-  - Wiki links (`[[Note Title]]`, `[[Note|shown text]]`, `[[Note#Heading]]`, `[[folder/Note]]`) for fast cross-note linking.
-  - `#tag` cloud and search filtering.
-- **Revision History ("Back to History")**:
-  - Automatic snapshots recorded on edit checkpoints and saves.
-  - Dual-pane History modal (`Ctrl + H` or toolbar button).
-  - Human-readable timestamps, word counts, and live markdown preview of past versions.
-  - One-click **"Restore This Version"** with automated safety backup.
-- **Date-Month Default Naming**: New notes automatically default to the current date and month (e.g. `16-09.md`).
-- **Quick Switcher**: Instant fuzzy search across all notes with keyboard navigation (`Ctrl + K`).
-- **Synchronized Scrolling**: Dual-pane editor and preview scroll in harmony.
-- **Note Status**: Mark a note **To do**, **Doing**, **Waiting** or **Done** from the picker next to its name. The status is saved in the note's YAML front-matter (`status: todo`), so it travels with the file and Obsidian reads it as a property; the preview hides it. Sidebar badges show each note's status, and the **Open** filter lists only notes still To do, Doing or Waiting, so nothing gets forgotten.
-- **Folders & Filters**: Notes are shown inside their folders (real folders on disk, nested as deep as you like), with note counts; click a folder to collapse it. Status chips (**All**, **Open**, **To do**, **Doing**, **Waiting**, **Done**) filter the tree, and *Show only this folder* narrows everything — tree, counts and new notes — to one folder, so "Work + Waiting" is two clicks. Create folders from the sidebar header or a folder's hover actions, and drag a note onto a folder (or the empty list area for the root) to move it; its revision history, pin and open sticky window move with it.
-- **Git Sync with a Commit Guard** (`Ctrl + Shift + G`, or the Git item in the status bar): initialize the vault as a repository, connect your GitHub repo, and **Commit**, **Pull**, **Push** or one-click **Sync** (commit → pull --rebase → push). Uses your installed Git and its sign-in; a conflicting pull is aborted cleanly. *Commit as* sets the author for the vault repo only, so a work identity is never used. **Local-only folders** stay on your computer and are never committed (managed block in `.gitignore`, marked `local` in the sidebar).
-  - The **commit guard** scans everything you commit and push — added lines, file names and the commit author — against rules stored in PinNote's settings for that vault (never inside the vault, so they are never committed and a downloaded vault can't switch them off; an empty rule set falls back to the defaults). Defaults cover company names (`nexon`), confidentiality labels in English and Vietnamese, API keys and passwords, `.env` secrets, database URLs with passwords, JWT/Bearer tokens, cloud provider keys, private keys, internal IPs and phone numbers. A match stops the commit or push and lists file, line and rule; you can edit the note, or confirm in a system dialog.
-- **Outline (Table of Contents)**: Toggle with the outline button in the title bar or `Ctrl + Shift + O`. Lists the note's headings indented by level; click one to jump both the editor and the preview there. The section you are reading is highlighted as you scroll (or follows the cursor in Edit mode).
-- **Resizable Sidebar**: Drag the sidebar edge (or focus it and use `←` / `→`); double-click resets the width. The width is remembered.
+### Writing
+- **Smart Markdown editor**
+  - Auto-closing `()`, `[]`, `{}`, `""` and `` ` ``. Typing the closer steps over it instead of doubling it.
+  - Single quotes are never auto-closed, so contractions like *don't* type naturally.
+  - Enter continues lists, task lists and numbered lists. `Tab` / `Shift + Tab` indent and unindent one or many lines, and `Tab` also steps out of closing markers (`**bold|**` → `**bold**|`).
+  - Toolbar and shortcuts for bold, italic, strikethrough, headings, lists, tasks, quotes, code, tables, callouts and math. Heading, list, task and quote buttons apply to the current line, or to every selected line.
+  - Input-method friendly: smart keys stay out of the way while an IME (e.g. Vietnamese Telex) is composing.
+- **Rich preview**
+  - Obsidian-style callouts (`> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!CAUTION]`, `> [!IMPORTANT]`).
+  - KaTeX math (`$$ E = mc^2 $$` and inline `$x^2$`; prices like "$5 and $10" stay plain text).
+  - Syntax-highlighted code with one-click copy buttons.
+  - Interactive checklists: ticking a box in the preview updates the note.
+  - Wiki links: `[[Note]]`, `[[Note|shown text]]`, `[[Note#Heading]]`, `[[folder/Note]]`. A link to a missing note creates it.
+- **Outline (table of contents):** toggle it with the title-bar button or `Ctrl + Shift + O`. It lists the note's headings, indented by level. Click one to jump the editor and the preview there. The section you are reading is highlighted as you scroll.
+- **Edit, Split and Preview modes**, with synchronized scrolling in Split mode.
+
+### Organizing
+- **Folders:** notes appear inside collapsible folders (real folders on disk, nested as deep as you like) with note counts.
+  - Create folders from the sidebar header or from a folder's hover actions.
+  - Create a note directly inside a folder.
+  - Drag a note onto a folder to move it. Its revision history, pin and sticky window move with it.
+- **Note status:** mark a note **To do**, **Doing**, **Waiting** or **Done** with the picker next to its name.
+  - The status is stored in the note's YAML front-matter (`status: todo`), so it travels with the file and Obsidian reads it as a property. The preview hides it.
+- **Filters:**
+  - Status chips filter the folder tree: **All**, **Open** (To do + Doing + Waiting), or a single status.
+  - *Show only this folder* narrows the tree, the counts and new notes to one folder. "Work + Waiting" is two clicks.
+- **Search:** filter by name, or type `#tag` to find notes containing that tag. A tag cloud shows the current note's tags.
+- **Quick Switcher** (`Ctrl + K`) to jump to any note by name.
+- **Pinned notes** stay at the top of the sidebar.
+- **Resizable sidebar:** drag its edge, or focus the edge and use `←` / `→`. Double-click resets it.
+
+### Sticky notes
+- **Pop out** any note (`Ctrl + P`) into a compact, independent desktop window.
+- **Always on top** (toggle per window), with adjustable opacity and text size.
+- **Live sync:** edits in a sticky window and in the main window stay in step.
+
+### History and safety
+- **Revision history** (`Ctrl + H`): snapshots are recorded as you write and save. Browse them with a live preview, and restore any version in one click (your current text is saved first).
+- **Autosave**, plus a flush of pending edits whenever a window closes.
+
+### Git sync with a commit guard
+Open the Git panel with `Ctrl + Shift + G`, or from the Git item in the status bar.
+
+- **Set up in the app:** initialize the vault as a repository, set *Commit as*, and connect your GitHub repository.
+  - *Commit as* is stored in the vault's repository only, so your global (for example work) Git identity is never used for your notes.
+- **Commit, Pull, Push**, or one-click **Sync** (commit → pull with rebase → push).
+  - Uses your installed Git and its sign-in (Git Credential Manager).
+  - A conflicting pull is aborted cleanly, and your commits are kept.
+- **Local-only folders** stay on your computer and are never committed. They are marked `local` in the sidebar.
+- **Commit guard:** every commit and push is scanned for sensitive content before it happens.
+  - What it scans: added lines, file names and the commit author. Push also checks commits made outside PinNote.
+  - Default rules cover company names (`nexon`), confidentiality labels in English and Vietnamese ("confidential", "internal only", "bảo mật", "nội bộ", "mật khẩu"), API keys and passwords, `.env` secrets, database URLs with passwords, Bearer/JWT tokens, cloud-provider keys, private keys, private-network IPs and Vietnamese phone numbers.
+  - A match stops the commit or push and lists file, line and rule. Edit the note, or confirm in a system dialog.
+  - Rules are editable in the panel. They are stored in PinNote's settings, not inside the vault, so they are never committed and a downloaded vault cannot switch them off.
+
+### Comfort
+- Warm White palette tuned for long writing sessions.
+- **Editor text size** (`Ctrl + =` / `Ctrl + -`) and an independent **interface scale** (`Ctrl + Shift + =` / `Ctrl + Shift + -`, also in the status bar).
+- Adjustable window opacity.
+- New notes are named after today's date (`DD-MM.md`).
 
 ---
 
@@ -43,130 +75,146 @@ An elegant, lightweight Obsidian-inspired Markdown note-taking app with detached
 
 | Shortcut | Action |
 | :--- | :--- |
-| `Ctrl + N` | Create a new note (default name: `DD-MM.md`) |
-| `Ctrl + S` | Save current note & create history checkpoint |
-| `Ctrl + H` | Open Note Revision History modal |
-| `Ctrl + K` | Open Quick Switcher note finder |
-| `Ctrl + P` | Pop out active note to floating desktop sticky window |
-| `Ctrl + \` | Toggle sidebar visibility |
-| `Ctrl + Shift + O` | Toggle the outline (table of contents) |
-| `Ctrl + Shift + G` | Open the Git panel |
-| `Ctrl + =` / `Ctrl + +` | Larger editor & preview text |
-| `Ctrl + -` | Smaller editor & preview text |
-| `Ctrl + 0` | Reset editor text size to default (20px) |
-| `Ctrl + Shift + =` | Larger interface (sidebar, toolbars, dialogs) |
-| `Ctrl + Shift + -` | Smaller interface |
-| `Ctrl + Shift + 0` | Reset interface size to 100% |
-| `Ctrl + B` | Bold selection / insert `****` |
-| `Ctrl + I` | Italicize selection / insert `**` |
-| `Tab` | Indent line(s) / tab out of closing tokens |
-| `Shift + Tab` | Unindent line(s) |
-| `Esc` | Close modal / cancel rename / clear sidebar search |
-| `F2` / `Enter` on a sidebar note | Rename / open it |
-
-The interface size is also adjustable from the status bar (`Interface − 100% +`); it is saved and shared with sticky windows.
+| `Ctrl + N` | New note (in the focused folder, named `DD-MM.md`) |
+| `Ctrl + S` | Save and record a history checkpoint |
+| `Ctrl + K` | Quick Switcher |
+| `Ctrl + P` | Pop out the note as a sticky window |
+| `Ctrl + H` | Revision history |
+| `Ctrl + Shift + O` | Toggle the outline |
+| `Ctrl + Shift + G` | Git panel |
+| `Ctrl + \` | Toggle the sidebar |
+| `Ctrl + B` / `Ctrl + I` | Bold / italic |
+| `Tab` / `Shift + Tab` | Indent / unindent (or step out of a closing marker) |
+| `Ctrl + =` / `Ctrl + -` / `Ctrl + 0` | Editor text larger / smaller / reset |
+| `Ctrl + Shift + =` / `Ctrl + Shift + -` / `Ctrl + Shift + 0` | Interface larger / smaller / reset |
+| `F2` / `Enter` / `Delete` on a sidebar note | Rename / open / delete |
+| `Esc` | Close a dialog, cancel a rename, or clear the search |
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (v18 or higher recommended)
-- npm
+- Windows 10 or 11
+- [Node.js](https://nodejs.org/) 18 or newer, with npm
+- [Git for Windows](https://git-scm.com/download/win), only needed for the Git features
 
-### Installation
+### Run from source
 ```bash
-# Clone the repository
-git clone <YOUR_REPOSITORY_URL>
+git clone https://github.com/hahuyhungdev/PinNote.git
 cd PinNote
-
-# Install dependencies
 npm install
-
-# Launch the app
 npm start
 ```
 
+You can also double-click `run.bat`, which launches the built app if it exists, otherwise the development build.
+
+On first launch PinNote creates a vault at `Documents\PinNote Vault` with two starter notes. Use the folder button in the sidebar to open any other folder as your vault.
+
+### Back up your notes to GitHub
+1. Create an empty repository on GitHub (private is a good idea).
+2. In PinNote, press `Ctrl + Shift + G` and click **Initialize Git**.
+3. Fill in **Commit as** with the name and email you want on GitHub, then click **Save**.
+4. Mark any folders that must never leave your machine as **local-only**.
+5. Paste the repository URL into **Remote** and click **Connect**.
+6. Click **Sync**. The first push may open a GitHub sign-in window.
+
 ---
 
-## 📁 Project Architecture
+## 📦 Building a Windows Executable
 
+```bash
+npm run build            # NSIS installer + portable .exe
+npm run build:portable   # portable .exe only
+npm run build:dir        # unpacked folder with PinNote.exe
 ```
-PinNote/
-├── main.js                  # Electron main process (lifecycle, IPC, vault path confinement)
-├── preload.js               # Context bridge: IPC API + sanitized markdown rendering
-├── package.json
-├── src/
-│   ├── index.html           # Main application shell
-│   ├── styles.css           # Warm White design system & typography
-│   ├── app.js               # Application orchestrator
-│   ├── sticky.html          # Floating sticky note UI
-│   ├── sticky.js            # Sticky note window controller
-│   ├── lib/                 # Node-side, DOM-free (used by main, preload and tests)
-│   │   ├── markdown.js      # Marked + KaTeX + highlight.js + callouts, sanitized by DOMPurify
-│   │   └── text-utils.js    # Task toggling, tags, note-name & path safety helpers
-│   └── modules/             # Renderer ES modules (no Node access)
-│       ├── preview.js       # Bridge wrappers, checkbox/wiki-link wiring, code copy buttons
-│       ├── smart-editor.js  # Smart typing pairs, tab-out, indentation
-│       ├── note-manager.js  # Note lifecycle, DD-MM.md naming, pinned notes
-│       ├── history.js       # Revision snapshotting & relative timestamping
-│       ├── history-modal.js # Dual-pane history modal & 1-click restore
-│       ├── quick-switcher.js# Fuzzy search modal (Ctrl + K)
-│       └── ui-controls.js   # View modes, font zooming, opacity, sync scroll
-├── test/                    # node:test suites (npm test)
-│   └── e2e/                 # Real-app Electron tests (npm run test:e2e)
-└── sample-vault/            # Starter markdown notes
-```
+
+Output goes to `dist/`:
+- `dist/PinNote-Portable-1.0.0.exe`: a single portable executable (no installation needed)
+- `dist/PinNote Setup 1.0.0.exe`: the Windows installer
+- `dist/win-unpacked/PinNote.exe`: the unpacked application
+
 ---
 
 ## 🧪 Tests
 
 ```bash
-npm test
+npm test          # unit tests
+npm run test:e2e  # end-to-end tests against the real app
 ```
 
-Covers markdown sanitizing (XSS), callouts, math, syntax highlighting, checkbox indexing, wiki-link parsing and resolution, tag extraction, note-name sanitizing and vault path confinement.
+- **Unit tests** (`node:test`) cover:
+  - markdown sanitizing (XSS), callouts, math and highlighting
+  - checkbox indexing, tags, headings, front-matter status, wiki-link resolution
+  - folder filtering, note-name and path safety
+  - the commit guard rules
+  - the Git service, run against real temporary repositories and a local "remote". Git must be installed.
+- **End-to-end tests** launch the real Electron app with `playwright-core`, using a throw-away profile (`--user-data-dir`) and a temporary vault, so your own settings and notes are never touched. They cover:
+  - the editor, notes and wiki links
+  - sticky windows: live sync, delete, flush on close, relaunch
+  - status, folders and filters, and folder actions (including drag and drop)
+  - the outline, the sidebar and toolbar layout
+  - the Git panel and commit guard
+  - protection against hostile vaults
 
-```bash
-npm run test:e2e
-```
-
-Launches the real Electron app through `playwright-core` with a throw-away profile (`--user-data-dir`) and a temporary vault, so your own settings and `Documents\PinNote Vault` are never touched. It covers the smart editor, notes and wiki links, sticky windows (live sync, delete, close flush, relaunch) and the sidebar/toolbar layout. Run it from Windows (`cmd`/PowerShell): the Electron binary in `node_modules` is platform-specific.
-
-## 🔒 Security Model
-
-Notes are untrusted input (a vault can be any folder, including synced or downloaded ones), so:
-
-- Windows run with `contextIsolation: true` and `nodeIntegration: false`; the page has no `require`.
-- Markdown is rendered in the preload and sanitized with DOMPurify before it reaches the DOM; a CSP blocks inline and remote scripts.
-- File IPC only accepts paths inside the open vault; note names are sanitized (no `..`, separators or reserved names).
-- Links open externally only for `http`, `https` and `mailto`; the app window can never be navigated away.
-- Git runs with fixed argument lists (no shell), with repository hooks, fsmonitor and the `ext::` transport disabled. A vault whose `.git/config` can run programs (fsmonitor, sshCommand, credential helpers, filters, textconv, includes…) is refused rather than executed.
-- Overriding the commit guard is confirmed by the main process in a native dialog; the page alone cannot force a commit or push.
-- PinNote never writes through links a vault plants: `.gitignore` symlinks are refused, and history goes to app data if `.pinnote` resolves outside the vault folder.
+  Run them from Windows (`cmd` or PowerShell), because the Electron binary in `node_modules` is platform-specific.
 
 ---
 
-## 📦 Building Standalone Windows Executable (.exe)
+## 📁 Project Structure
 
-```bash
-# Build Windows installer and portable .exe
-npm run build
-
-# Build portable .exe only
-npm run build:portable
-
-# Build unpacked directory with PinNote.exe
-npm run build:dir
+```
+PinNote/
+├── main.js                   # Electron main process: windows, IPC, vault confinement, Git & guard IPC
+├── preload.js                # Context bridge: IPC API + sanitized Markdown rendering
+├── run.bat                   # Windows launcher
+├── src/
+│   ├── index.html            # Main window
+│   ├── styles.css            # Warm White design system
+│   ├── git-panel.css         # Git panel styles
+│   ├── app.js                # Main window orchestrator
+│   ├── sticky.html / .js     # Sticky note window
+│   ├── lib/                  # Node-side, DOM-free (used by main, preload and tests)
+│   │   ├── markdown.js       # Marked + KaTeX + highlight.js + callouts, sanitized by DOMPurify
+│   │   ├── text-utils.js     # Tasks, tags, headings, front-matter status, wiki links, path safety
+│   │   ├── git-service.js    # Git commands for the vault (hardened against hostile repos)
+│   │   └── commit-guard.js   # Sensitive-content rules and diff scanning
+│   └── modules/              # Renderer ES modules (no Node access)
+│       ├── smart-editor.js   # Smart typing, list continuation, indentation, formatting
+│       ├── preview.js        # Bridge wrappers, checkbox/wiki-link wiring, copy buttons
+│       ├── note-manager.js   # Folder tree, note actions, drag and drop, inline rename
+│       ├── note-filter.js    # Status / tag / folder filtering of the tree
+│       ├── note-status.js    # Status labels
+│       ├── outline.js        # Outline (table of contents)
+│       ├── git-panel.js      # Git panel and commit-guard review
+│       ├── history.js        # Revision snapshots and timestamps
+│       ├── history-modal.js  # History browser and restore
+│       ├── quick-switcher.js # Ctrl + K note finder
+│       └── ui-controls.js    # View modes, text size, interface scale, opacity, sidebar resize
+├── test/                     # Unit tests (npm test)
+│   └── e2e/                  # Real-app tests (npm run test:e2e)
+└── sample-vault/             # Starter notes copied into a new vault
 ```
 
-The compiled binaries will be output to the `dist/` directory:
-- `dist/PinNote-Portable-1.0.0.exe` — Single portable standalone executable (no installation needed)
-- `dist/PinNote Setup 1.0.0.exe` — Windows NSIS installer
-- `dist/win-unpacked/PinNote.exe` — Standalone unpacked application
+---
+
+## 🔒 Security Model
+
+A vault can be any folder, including synced or downloaded ones, so note content and the vault's own files are treated as untrusted:
+
+- **Isolated page:** windows run with `contextIsolation: true` and `nodeIntegration: false`, so the page has no Node access.
+- **Sanitized rendering:** Markdown is rendered in the preload and sanitized with DOMPurify, and a Content Security Policy blocks inline and remote scripts.
+- **Vault confinement:** file and folder IPC only accept paths inside the open vault, with symlinks resolved. Note and folder names are sanitized (no `..`, separators or reserved names).
+- **Safe links:** links open externally only for `http`, `https` and `mailto`, and the app window can never be navigated away.
+- **Hardened Git:**
+  - Git runs with fixed argument lists and no shell.
+  - Repository hooks, `fsmonitor` and the `ext::` transport are disabled.
+  - A vault whose `.git/config` can run programs (fsmonitor, sshCommand, credential helpers, filters, textconv, includes, …) is refused instead of executed.
+- **Guard overrides need you:** overriding the commit guard is confirmed by the main process in a native dialog. The page alone cannot force a commit or push.
+- **No writing through planted links:** `.gitignore` symlinks are refused, and revision history is written to app data if `.pinnote` points outside the vault.
 
 ---
 
 ## 📄 License
 
-MIT License © 2026 Antigravity
+[MIT](LICENSE) © 2026 hahuyhungdev
