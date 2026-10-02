@@ -52,6 +52,10 @@ mật khẩu
 # /\\b(?:\\d[ -]?){13,16}\\b/
 `;
 
+// "(a+)+" style nesting can take exponential time on long lines; refuse it outright
+const NESTED_REPEAT = /\((?:[^()\\]|\\.)*[+*}](?:[^()\\]|\\.)*\)\s*[+*{]/;
+const MAX_SCAN_CHARS = 4000;
+
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
@@ -77,6 +81,10 @@ function parseRules(text) {
       continue;
     }
     const regex = /^\/(.+)\/([a-z]*)$/.exec(line);
+    if (regex && NESTED_REPEAT.test(regex[1])) {
+      errors.push(`${line}: nested repetition could make scanning very slow`);
+      continue;
+    }
     try {
       // Flags never include g/y: those make RegExp.test stateful between lines
       const re = regex
@@ -103,23 +111,42 @@ function scanDiff(diffText, rules) {
   const findings = [];
   let file = null;
   let lineNo = 0;
+  // Lines still expected in the current hunk: a "+++ " line inside a hunk is note text, not a header
+  let oldLeft = 0;
+  let newLeft = 0;
 
   for (const line of String(diffText ?? '').split('\n')) {
-    if (line.startsWith('+++ ')) {
-      file = line === '+++ /dev/null' ? null : line.slice(4).replace(/^b\//, '');
+    if (oldLeft <= 0 && newLeft <= 0) {
+      if (line.startsWith('+++ ')) {
+        file = line === '+++ /dev/null' ? null : line.slice(4).replace(/^b\//, '');
+        continue;
+      }
+      const hunk = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+      if (hunk) {
+        oldLeft = hunk[1] === undefined ? 1 : Number(hunk[1]);
+        lineNo = Number(hunk[2]);
+        newLeft = hunk[3] === undefined ? 1 : Number(hunk[3]);
+      }
       continue;
     }
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-    if (hunk) {
-      lineNo = Number(hunk[1]);
-      continue;
-    }
-    if (!file || !line.startsWith('+')) continue;
 
-    const text = line.slice(1).normalize('NFC');
-    const rule = rules.find(r => r.re.test(text));
-    if (rule) findings.push({ file, line: lineNo, rule: rule.source, label: rule.label, excerpt: excerptOf(text) });
-    lineNo++;
+    if (line.startsWith('+')) {
+      newLeft--;
+      const text = line.slice(1, MAX_SCAN_CHARS + 1).normalize('NFC');
+      const rule = file && rules.find(r => r.re.test(text));
+      if (rule) findings.push({ file, line: lineNo, rule: rule.source, label: rule.label, excerpt: excerptOf(text) });
+      lineNo++;
+    } else if (line.startsWith('-')) {
+      oldLeft--;
+    } else if (line.startsWith(' ')) {
+      oldLeft--;
+      newLeft--;
+      lineNo++;
+    } else if (!line.startsWith('\\')) {
+      // Anything else ("\ No newline at end of file" aside) means the hunk ended
+      oldLeft = 0;
+      newLeft = 0;
+    }
   }
   return findings;
 }

@@ -6,6 +6,7 @@
 
 const { execFile } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { parseRules, scanDiff, scanPaths } = require('./commit-guard');
 
@@ -97,8 +98,8 @@ const canonical = (p) => {
     return path.resolve(p);
   }
 };
-// gitignore treats these specially; a backslash makes them literal
-const escapeIgnore = (s) => s.replace(/[\\*?[\]!#]/g, '\\$&');
+// gitignore treats these specially; a backslash makes them literal (a trailing space too)
+const escapeIgnore = (s) => s.replace(/[\\*?[\]!#]/g, '\\$&').replace(/ $/, '\\ ');
 const unescapeIgnore = (s) => s.replace(/\\(.)/g, '$1');
 
 function splitLocalBlock(text) {
@@ -113,6 +114,25 @@ function splitLocalBlock(text) {
   };
 }
 
+/**
+ * Repo-local settings that make git run a program (or rewrite what it executes). A vault is
+ * untrusted content, so a .git/config carrying any of these is refused rather than executed.
+ */
+const UNSAFE_CONFIG = [
+  /^core\.(fsmonitor|sshcommand|hookspath|askpass|editor|pager|gitproxy)$/,
+  /^credential\.(.+\.)?helper$/,
+  /^filter\./,
+  /^diff\.(.+\.)?(textconv|command)$/,
+  /^diff\.external$/,
+  /^merge\..+\.driver$/,
+  /^include\.path$/,
+  /^includeif\./,
+  /^remote\..+\.(uploadpack|receivepack|proxy)$/,
+  /^gpg\./,
+  /^protocol\./,
+  /^sequence\.editor$/
+];
+
 const samePath = (a, b) => process.platform === 'win32'
   ? canonical(a).toLowerCase() === canonical(b).toLowerCase()
   : canonical(a) === canonical(b);
@@ -122,8 +142,15 @@ const samePath = (a, b) => process.platform === 'win32'
 // ==========================================
 
 function createGitService({ gitPath = 'git', env = {} } = {}) {
+  // Hooks from the vault never run: every command points hooksPath at an empty private folder
+  let noHooksDir = null;
+  const hardening = () => {
+    noHooksDir ||= fs.mkdtempSync(path.join(os.tmpdir(), 'pinnote-no-hooks-'));
+    return ['-c', 'core.fsmonitor=false', '-c', `core.hooksPath=${noHooksDir}`, '-c', 'protocol.ext.allow=never'];
+  };
+
   const run = (cwd, args, timeout = LOCAL_TIMEOUT) => new Promise((resolve, reject) => {
-    execFile(gitPath, args, {
+    execFile(gitPath, [...hardening(), ...args], {
       cwd,
       timeout,
       windowsHide: true,
@@ -148,12 +175,29 @@ function createGitService({ gitPath = 'git', env = {} } = {}) {
     return Boolean(top) && samePath(top, dir);
   }
 
+  /** Repo-local config keys that could run programs (reading config never executes anything) */
+  async function unsafeConfig(dir) {
+    const out = await run(dir, ['config', '--local', '--null', '--list']).catch(() => '');
+    const keys = out.split('\0').map(entry => entry.split('\n')[0].toLowerCase()).filter(Boolean);
+    return [...new Set(keys.filter(key => UNSAFE_CONFIG.some(re => re.test(key))))];
+  }
+
   async function requireRepo(dir) {
     if (!(await isRepoRoot(dir))) throw new Error('This vault is not a Git repository yet. Initialize Git first.');
+    const unsafe = await unsafeConfig(dir);
+    if (unsafe.length) {
+      throw new Error(`This vault's Git settings can run programs (${unsafe.join(', ')}). ` +
+        "PinNote won't run Git here — remove them from .git/config, or use Git directly.");
+    }
   }
 
   async function remoteUrl(dir) {
     return tryRun(dir, ['remote', 'get-url', 'origin']);
+  }
+
+  // Where pushes really go (pushurl / insteadOf can differ from the fetch URL)
+  async function pushUrl(dir) {
+    return tryRun(dir, ['remote', 'get-url', '--push', 'origin']);
   }
 
   let availability = null;
@@ -164,12 +208,26 @@ function createGitService({ gitPath = 'git', env = {} } = {}) {
 
   async function status(dir) {
     if (!(await isRepoRoot(dir))) return { isRepo: false };
+    const unsafe = await unsafeConfig(dir);
+    if (unsafe.length) return { isRepo: true, unsafeConfig: unsafe, branch: null, upstream: null, ahead: 0, behind: 0, changes: [] };
     const out = await run(dir, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all']);
-    return { isRepo: true, remoteUrl: await remoteUrl(dir), ...parseStatus(out) };
+    return { isRepo: true, remoteUrl: await remoteUrl(dir), pushUrl: await pushUrl(dir), ...parseStatus(out) };
+  }
+
+  /** Refuse to write through a symlink a vault may have planted (e.g. .gitignore → ~/.bashrc) */
+  function assertNotSymlink(file) {
+    let stat = null;
+    try {
+      stat = fs.lstatSync(file);
+    } catch (e) {
+      return;
+    }
+    if (stat.isSymbolicLink()) throw new Error(`Refusing to write ${path.basename(file)}: it is a symbolic link`);
   }
 
   function ensureIgnored(dir) {
     const file = path.join(dir, '.gitignore');
+    assertNotSymlink(file);
     const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '';
     if (/^\/?\.pinnote\/?\s*$/m.test(current)) return;
     const prefix = current && !current.endsWith('\n') ? '\n' : '';
@@ -177,7 +235,9 @@ function createGitService({ gitPath = 'git', env = {} } = {}) {
   }
 
   async function init(dir) {
+    assertNotSymlink(path.join(dir, '.gitignore'));
     if (!(await isRepoRoot(dir))) await run(dir, ['init', '-b', 'main']);
+    else await requireRepo(dir);
     ensureIgnored(dir);
     return status(dir);
   }
@@ -192,7 +252,8 @@ function createGitService({ gitPath = 'git', env = {} } = {}) {
   }
 
   // Readable, unprefixed-config-proof patches for the guard scan
-  const PATCH_ARGS = ['--no-color', '--no-ext-diff', '-U0', '--src-prefix=a/', '--dst-prefix=b/'];
+  // --text/--no-textconv: binary-marked or textconv'd files must still show their real lines
+  const PATCH_ARGS = ['--no-color', '--no-ext-diff', '--no-textconv', '--text', '-U0', '--src-prefix=a/', '--dst-prefix=b/'];
   const unquote = (p) => p.replace(/^"(.*)"$/, '$1');
 
   function runGuard(guard, paths, patch) {
@@ -267,11 +328,11 @@ function createGitService({ gitPath = 'git', env = {} } = {}) {
     if (!(await remoteUrl(dir))) throw new Error('Connect a remote repository first');
 
     if (guard && !force) {
-      const { upstream } = parseStatus(await run(dir, ['status', '--porcelain=v2', '--branch', '-z']));
-      const range = upstream ? `${upstream}..HEAD` : 'HEAD';
-      // Each commit's own patch, so a secret added and later deleted is still caught
-      const patch = await run(dir, ['-c', 'core.quotePath=false', 'log', '-p', '--format=', ...PATCH_ARGS, range]);
-      const names = await run(dir, ['-c', 'core.quotePath=false', 'log', '--name-only', '--diff-filter=d', '--format=', range]);
+      // Everything not already on origin (independent of any configured upstream), merges included,
+      // each commit's own patch so a secret added and later deleted is still caught
+      const range = ['HEAD', '--not', '--remotes=origin'];
+      const patch = await run(dir, ['-c', 'core.quotePath=false', 'log', '-p', '-m', '--format=', ...PATCH_ARGS, ...range]);
+      const names = await run(dir, ['-c', 'core.quotePath=false', 'log', '-m', '--name-only', '--diff-filter=d', '--format=', ...range]);
       const blocked = runGuard(guard, [...new Set(names.split('\n').filter(Boolean))], patch);
       if (blocked.length) return { pushed: false, blocked };
     }
@@ -332,7 +393,7 @@ function createGitService({ gitPath = 'git', env = {} } = {}) {
   function validateFolder(dir, folder) {
     const rel = String(folder ?? '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
     const parts = rel.split('/');
-    const invalid = !rel || rel.startsWith('/') || path.isAbsolute(rel) ||
+    const invalid = !rel || rel.startsWith('/') || path.isAbsolute(rel) || /[\u0000-\u001f]/.test(rel) ||
       parts.some(p => !p || p === '..' || p.startsWith('.'));
     let isDir = false;
     try {
@@ -351,6 +412,7 @@ function createGitService({ gitPath = 'git', env = {} } = {}) {
     const list = [...new Set(folders.map(f => validateFolder(dir, f)))];
     const previous = await getLocalOnly(dir);
 
+    assertNotSymlink(ignoreFile(dir));
     const { before, after } = splitLocalBlock(readIgnore(dir));
     const rest = `${before}${after}`.replace(/\n*$/, '');
     const block = list.length

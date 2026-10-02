@@ -106,3 +106,22 @@ test('findings carry a readable label: the word itself, or the comment heading a
   assert.equal(finding.label, 'Internal network addresses');
   assert.equal(scanPaths(['Nexon.md'], rules)[0].label, '"nexon"');
 });
+
+test('an added line that starts with "++ " is still scanned, not mistaken for a file header', () => {
+  const diff = [
+    '--- a/a.md',
+    '+++ b/a.md',
+    '@@ -1,0 +2,2 @@',
+    '+++ API_KEY=abc123',
+    '+fine'
+  ].join('\n');
+  const findings = scanDiff(diff, parseRules('/api[_-]?key/i').rules);
+  assert.deepEqual(findings.map(f => [f.file, f.line]), [['a.md', 2]]);
+});
+
+test('rules that could hang the scan (nested quantifiers) are rejected', () => {
+  const { rules, errors } = parseRules('/(a+)+$/\n/(\\w*)*x/\n/ok+/');
+  assert.deepEqual(rules.map(r => r.source), ['/ok+/']);
+  assert.equal(errors.length, 2);
+  assert.match(errors[0], /slow/);
+});

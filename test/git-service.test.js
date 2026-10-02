@@ -263,3 +263,74 @@ test('local-only folders are kept out of Git without deleting the notes', async 
     await assert.rejects(git.setLocalOnly(dir, [bad]), /folder/i, bad);
   }
 });
+
+test('a hostile repo config is refused and never executed', async () => {
+  const dir = path.join(tmp, 'hostile');
+  write(dir, 'Note.md', '# Note\n');
+  sh(tmp, 'init', '-b', 'main', dir);
+  const marker = path.join(tmp, 'pwned.txt');
+  const cmd = `node -e "require('fs').writeFileSync(process.argv[1],'x')" ${JSON.stringify(marker)}`;
+  sh(dir, 'config', 'core.fsmonitor', cmd);
+  sh(dir, 'config', 'core.sshCommand', cmd);
+
+  const status = await git.status(dir);
+  assert.deepEqual(status.unsafeConfig.sort(), ['core.fsmonitor', 'core.sshcommand']);
+  await assert.rejects(git.commit(dir, 'x'), /can run programs/);
+  await assert.rejects(git.setRemote(dir, 'https://github.com/a/b.git'), /can run programs/);
+  assert.equal(fs.existsSync(marker), false, 'nothing was executed');
+});
+
+test('repository hooks never run when PinNote commits', async () => {
+  const dir = path.join(tmp, 'hooked');
+  write(dir, 'Note.md', '# Note\n');
+  await git.init(dir);
+  const marker = path.join(tmp, 'hook-ran.txt');
+  write(dir, '.git/hooks/pre-commit', `#!/bin/sh\necho x > "${marker.replace(/\\/g, '/')}"\nexit 1\n`);
+  fs.chmodSync(path.join(dir, '.git/hooks/pre-commit'), 0o755);
+  assert.equal((await git.commit(dir, 'with hook')).committed, true);
+  assert.equal(fs.existsSync(marker), false);
+});
+
+test('the guard still sees content marked binary or hidden from diffs', async () => {
+  const dir = path.join(tmp, 'binary');
+  write(dir, '.gitattributes', '*.md -diff\n');
+  write(dir, 'Note.md', '# Note\nCall Nexon\n');
+  await git.init(dir);
+  const result = await git.commit(dir, 'x', { guard: 'nexon' });
+  assert.deepEqual(result.blocked.map(f => f.file), ['Note.md']);
+});
+
+test('push scans everything not yet on the remote, even if the upstream is pointed elsewhere', async () => {
+  const dir = path.join(tmp, 'binary');
+  await git.commit(dir, 'Allowed', { force: true });
+  const remote = path.join(tmp, 'binary-remote.git');
+  sh(tmp, 'init', '--bare', '-b', 'main', remote);
+  await git.setRemote(dir, remote);
+  // Point the branch's upstream at itself so "upstream..HEAD" would be empty
+  sh(dir, 'config', 'branch.main.remote', '.');
+  sh(dir, 'config', 'branch.main.merge', 'refs/heads/main');
+  const result = await git.push(dir, { guard: 'nexon' });
+  assert.equal(result.pushed, false);
+  assert.deepEqual(result.blocked.map(f => f.file), ['Note.md']);
+});
+
+test('status shows where pushes really go', async () => {
+  const dir = path.join(tmp, 'binary');
+  sh(dir, 'config', 'remote.origin.pushurl', path.join(tmp, 'elsewhere.git'));
+  const status = await git.status(dir);
+  assert.equal(status.pushUrl, path.join(tmp, 'elsewhere.git'));
+});
+
+test('a symlinked .gitignore is never written through', async (t) => {
+  const dir = path.join(tmp, 'linked');
+  fs.mkdirSync(dir);
+  const outside = path.join(tmp, 'outside.txt');
+  fs.writeFileSync(outside, 'keep me\n');
+  try {
+    fs.symlinkSync(outside, path.join(dir, '.gitignore'));
+  } catch (e) {
+    return t.skip('symlinks need extra rights here');
+  }
+  await assert.rejects(git.init(dir), /symbolic link/);
+  assert.equal(fs.readFileSync(outside, 'utf-8'), 'keep me\n');
+});
