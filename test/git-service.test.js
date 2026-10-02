@@ -178,7 +178,9 @@ test('the commit guard blocks matching added lines and file names until forced',
   assert.equal(sh(dir, 'log', '-1', '--format=%s'), 'Start', 'nothing was committed');
 
   // The same scan runs inside sync, which stops before pulling or pushing
-  assert.equal((await git.sync(dir, 'Meeting', { guard })).blocked.length, 1);
+  const synced = await git.sync(dir, 'Meeting', { guard });
+  assert.equal(synced.blocked.length, 1);
+  assert.equal(synced.stage, 'commit');
 
   const forced = await git.commit(dir, 'Meeting', { guard, force: true });
   assert.equal(forced.committed, true);
@@ -218,4 +220,14 @@ test('setIdentity stores the commit author in the vault repo only', async () => 
   assert.equal(sh(dir, 'config', '--local', 'user.email'), 'hahuyhungdev@gmail.com');
   await assert.rejects(git.setIdentity(dir, 'x', 'not-an-email'), /valid email/);
   await assert.rejects(git.setIdentity(dir, '', 'a@b.c'), /name/);
+});
+
+test('the guard also checks the commit author, so a company email is not published', async () => {
+  const dir = path.join(tmp, 'guarded');
+  await git.setIdentity(dir, 'Ha Huy Hung', 'huy.hung@nexondv.com');
+  write(dir, 'Clean too.md', '# fine\n');
+  const blocked = await git.commit(dir, 'x', { guard: 'nexon' });
+  assert.deepEqual(blocked.blocked.map(f => [f.file, f.excerpt]), [['Commit author', 'Ha Huy Hung <huy.hung@nexondv.com>']]);
+  await git.setIdentity(dir, 'hahuyhungdev', 'hahuyhungdev@gmail.com');
+  assert.equal((await git.commit(dir, 'x', { guard: 'nexon' })).committed, true);
 });

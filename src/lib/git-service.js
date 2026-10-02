@@ -194,7 +194,10 @@ function createGitService({ gitPath = 'git', env = {} } = {}) {
 
     if (guard && !force) {
       const patch = await run(dir, ['-c', 'core.quotePath=false', 'diff', '--cached', ...PATCH_ARGS]);
-      const blocked = runGuard(guard, changes.filter(c => c.code !== 'D').map(c => c.path), patch);
+      const who = await identity(dir);
+      const author = scanPaths([`${who.name || ''} <${who.email || ''}>`], parseRules(guard).rules)
+        .map(f => ({ ...f, file: 'Commit author' }));
+      const blocked = [...author, ...runGuard(guard, changes.filter(c => c.code !== 'D').map(c => c.path), patch)];
       if (blocked.length) return { committed: false, message: null, blocked };
     }
 
@@ -259,17 +262,21 @@ function createGitService({ gitPath = 'git', env = {} } = {}) {
     return { pushed: true };
   }
 
-  /** Commit local edits, then pull (rebase) and push when a remote is connected */
-  async function sync(dir, message = '', guardOptions = {}) {
+  /**
+   * Commit local edits, then pull (rebase) and push when a remote is connected.
+   * A guard match stops the run and reports which `stage` (commit or push) it came from, so the
+   * caller can confirm exactly that stage with forceCommit / forcePush.
+   */
+  async function sync(dir, message = '', { guard = null, forceCommit = false, forcePush = false } = {}) {
     const done = { committed: false, updated: false, pushed: false };
-    const committed = await commit(dir, message, guardOptions);
-    if (committed.blocked) return { ...done, blocked: committed.blocked };
+    const committed = await commit(dir, message, { guard, force: forceCommit });
+    if (committed.blocked) return { ...done, stage: 'commit', blocked: committed.blocked };
     done.committed = committed.committed;
 
     if (!(await remoteUrl(dir))) return done;
     done.updated = (await pull(dir)).updated;
-    const pushed = await push(dir, guardOptions);
-    if (pushed.blocked) return { ...done, blocked: pushed.blocked };
+    const pushed = await push(dir, { guard, force: forcePush });
+    if (pushed.blocked) return { ...done, stage: 'push', blocked: pushed.blocked };
     return { ...done, pushed: true };
   }
 
