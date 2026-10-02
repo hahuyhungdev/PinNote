@@ -1,10 +1,12 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { extractTags, flattenNoteFiles, sanitizeNoteName, isPathInside, getNoteStatus } = require('./src/lib/text-utils');
 const { createGitService } = require('./src/lib/git-service');
 const { DEFAULT_GUARD_RULES, parseRules } = require('./src/lib/commit-guard');
+const { buildEditorMenu, toMenuTemplate } = require('./src/lib/spell-menu');
+const { createSpellChecker, loadEnglishDictionary, isCheckableWord } = require('./src/lib/spell-suggest');
 
 function logDebug(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
@@ -92,6 +94,10 @@ function hardenWindow(win) {
     openExternalSafe(url);
   });
 
+  win.webContents.on('context-menu', (event, params) => showEditorMenu(win, params));
+  // Chromium re-enables spell checking while the first page starts up; re-apply the saved choice
+  win.webContents.on('did-finish-load', applySpellcheckEnabled);
+
   win.on('maximize', () => win.webContents.send('window-maximized-state', true));
   win.on('unmaximize', () => win.webContents.send('window-maximized-state', false));
 
@@ -102,6 +108,86 @@ function hardenWindow(win) {
     win.webContents.send('app-before-close');
     setTimeout(() => closeWithoutFlush(win), 2000);
   });
+}
+
+// ==========================================
+// SPELL CHECKING
+// ==========================================
+
+const SPELLCHECK_LANGUAGES = ['en-US'];
+
+const spellcheckSetting = () => readSettings().spellcheck !== false;
+
+function applySpellcheckEnabled() {
+  session.defaultSession.setSpellCheckerEnabled(spellcheckSetting());
+}
+
+// Languages first, then the saved on/off state, so the language change cannot override it
+function applySpellcheckSettings() {
+  try {
+    session.defaultSession.setSpellCheckerLanguages(SPELLCHECK_LANGUAGES);
+  } catch (e) {
+    logDebug(`Spellchecker languages failed: ${e}`);
+  }
+  applySpellcheckEnabled();
+}
+
+// The Ctrl + Space fix needs its own dictionary: the page cannot query the Windows spell checker
+let spellChecker = null;
+
+function getSpellChecker() {
+  spellChecker ??= session.defaultSession.listWordsInSpellCheckerDictionary()
+    .catch(() => [])
+    .then(words => createSpellChecker({ ...loadEnglishDictionary(), words }))
+    .catch((err) => {
+      spellChecker = null;
+      throw err;
+    });
+  return spellChecker;
+}
+
+/** Add a word to both dictionaries, so the underlines and Ctrl + Space agree */
+function learnWord(word) {
+  session.defaultSession.addWordToSpellCheckerDictionary(word);
+  getSpellChecker().then(checker => checker.add(word)).catch(e => logDebug(`Spell learn failed: ${e}`));
+}
+
+const MAX_FIX_WORDS = 50;
+
+// Words nearest the caret first; answers with the first misspelled one and its fixes
+ipcMain.handle('spell-find-fix', async (event, words) => {
+  if (!Array.isArray(words) || words.length > MAX_FIX_WORDS || !words.every(isCheckableWord)) {
+    throw new Error('Invalid words');
+  }
+  const checker = await getSpellChecker();
+  const index = words.findIndex(word => checker.isMisspelled(word));
+  return index < 0 ? null : { index, suggestions: checker.suggest(words[index]) };
+});
+
+ipcMain.handle('spell-learn-word', (event, word) => {
+  if (!isCheckableWord(word)) throw new Error('Invalid word');
+  learnWord(word);
+});
+
+function showEditorMenu(win, params) {
+  const ses = win.webContents.session;
+  const items = buildEditorMenu(params, { spellcheckEnabled: ses.isSpellCheckerEnabled() });
+  if (!items.length) return;
+
+  const handlers = {
+    replace: (word) => win.webContents.replaceMisspelling(word),
+    learn: learnWord,
+    'toggle-spellcheck': () => {
+      const enabled = !ses.isSpellCheckerEnabled();
+      ses.setSpellCheckerEnabled(enabled);
+      writeSettings({ spellcheck: enabled });
+    }
+  };
+  const template = toMenuTemplate(items, (action, word) => {
+    if (!win.isDestroyed()) handlers[action](word);
+  });
+  // Open at the click (or the caret, for the keyboard menu key) rather than wherever the mouse is
+  Menu.buildFromTemplate(template).popup({ window: win, x: params.x, y: params.y });
 }
 
 function closeWithoutFlush(win) {
@@ -149,7 +235,10 @@ function createMainWindow() {
 }
 
 app.whenReady().then(() => {
+  applySpellcheckSettings();
   createMainWindow();
+  // Load the Ctrl + Space dictionary once start-up has settled, so the first fix is instant
+  setTimeout(() => getSpellChecker().catch(e => logDebug(`Spell checker load failed: ${e}`)), 1500);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

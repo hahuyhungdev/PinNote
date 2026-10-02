@@ -15,6 +15,9 @@ Notes are plain `.md` files in a folder you choose, so they stay readable in any
   - Enter continues lists, task lists and numbered lists. `Tab` / `Shift + Tab` indent and unindent one or many lines, and `Tab` also steps out of closing markers (`**bold|**` → `**bold**|`).
   - Toolbar and shortcuts for bold, italic, strikethrough, headings, lists, tasks, quotes, code, tables, callouts and math. Heading, list, task and quote buttons apply to the current line, or to every selected line.
   - Input-method friendly: smart keys stay out of the way while an IME (e.g. Vietnamese Telex) is composing.
+- **English spell check** in the editor and sticky notes. Misspelled words are underlined. Right-click one for suggestions or *Add to dictionary*. The right-click menu also has Cut, Copy, Paste and Select all, and a **Check spelling** toggle that PinNote remembers.
+  - **Fix from the keyboard** with `Ctrl + Space`: PinNote finds the misspelled word at the cursor, or the nearest one before it, highlights it and lists fixes beside it, likeliest first. Pick one with `1`–`5`, or `↑` / `↓` and `Enter`. `Esc` cancels, and `Ctrl + Z` undoes a fix. If an input method that switches on with `Ctrl + Space` (for example a Chinese IME) is active, Windows may take the key first.
+  - Code, code blocks and links are skipped. Fixes come from an offline English dictionary, so your text never leaves your computer.
 - **Rich preview**
   - Obsidian-style callouts (`> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!CAUTION]`, `> [!IMPORTANT]`).
   - KaTeX math (`$$ E = mc^2 $$` and inline `$x^2$`; prices like "$5 and $10" stay plain text).
@@ -84,6 +87,7 @@ Open the Git panel with `Ctrl + Shift + G`, or from the Git item in the status b
 | `Ctrl + Shift + G` | Git panel |
 | `Ctrl + \` | Toggle the sidebar |
 | `Ctrl + B` / `Ctrl + I` | Bold / italic |
+| `Ctrl + Space` | Fix the nearest misspelled word (`1`–`5` or `↑` `↓` `Enter` to pick, `Esc` to cancel) |
 | `Tab` / `Shift + Tab` | Indent / unindent (or step out of a closing marker) |
 | `Ctrl + =` / `Ctrl + -` / `Ctrl + 0` | Editor text larger / smaller / reset |
 | `Ctrl + Shift + =` / `Ctrl + Shift + -` / `Ctrl + Shift + 0` | Interface larger / smaller / reset |
@@ -148,6 +152,8 @@ npm run test:e2e  # end-to-end tests against the real app
   - checkbox indexing, tags, headings, front-matter status, wiki-link resolution
   - folder filtering, note-name and path safety
   - the commit guard rules
+  - the editor's right-click menu (spelling suggestions, edit actions, spelling toggle)
+  - spelling fixes: finding words near the cursor (skipping code and links), and ranking likely fixes first
   - the Git service, run against real temporary repositories and a local "remote". Git must be installed.
 - **End-to-end tests** launch the real Electron app with `playwright-core`, using a throw-away profile (`--user-data-dir`) and a temporary vault, so your own settings and notes are never touched. They cover:
   - the editor, notes and wiki links
@@ -155,6 +161,8 @@ npm run test:e2e  # end-to-end tests against the real app
   - status, folders and filters, and folder actions (including drag and drop)
   - the outline, the sidebar and toolbar layout
   - the Git panel and commit guard
+  - spell checking: fixing a word from the right-click menu, and keeping the toggle across sticky windows and restarts
+  - the `Ctrl + Space` fix: keys, caret placement, undo, cancel, *Add to dictionary* and sticky windows
   - protection against hostile vaults
 
   Run them from Windows (`cmd` or PowerShell), because the Electron binary in `node_modules` is platform-specific.
@@ -178,7 +186,9 @@ PinNote/
 │   │   ├── markdown.js       # Marked + KaTeX + highlight.js + callouts, sanitized by DOMPurify
 │   │   ├── text-utils.js     # Tasks, tags, headings, front-matter status, wiki links, path safety
 │   │   ├── git-service.js    # Git commands for the vault (hardened against hostile repos)
-│   │   └── commit-guard.js   # Sensitive-content rules and diff scanning
+│   │   ├── commit-guard.js   # Sensitive-content rules and diff scanning
+│   │   ├── spell-menu.js     # Editor right-click menu: spelling fixes and edit actions
+│   │   └── spell-suggest.js  # Offline English dictionary and fix ranking for Ctrl + Space
 │   └── modules/              # Renderer ES modules (no Node access)
 │       ├── smart-editor.js   # Smart typing, list continuation, indentation, formatting
 │       ├── preview.js        # Bridge wrappers, checkbox/wiki-link wiring, copy buttons
@@ -190,6 +200,8 @@ PinNote/
 │       ├── history.js        # Revision snapshots and timestamps
 │       ├── history-modal.js  # History browser and restore
 │       ├── quick-switcher.js # Ctrl + K note finder
+│       ├── spell-fix.js      # Ctrl + Space spelling fix list at the cursor
+│       ├── spell-words.js    # Words near the cursor (skips code and links)
 │       └── ui-controls.js    # View modes, text size, interface scale, opacity, sidebar resize
 ├── test/                     # Unit tests (npm test)
 │   └── e2e/                  # Real-app tests (npm run test:e2e)

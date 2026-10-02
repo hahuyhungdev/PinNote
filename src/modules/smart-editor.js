@@ -435,5 +435,6 @@ function setupSmartEditor(textarea, { onSave } = {}) {
 
 export {
   setupSmartEditor,
-  insertFormat
+  insertFormat,
+  replaceRange
 };

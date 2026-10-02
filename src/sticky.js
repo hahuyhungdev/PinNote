@@ -5,6 +5,7 @@
 
 import { renderMarkdown, enhancePreview, noteTitle } from './modules/preview.js';
 import { setupSmartEditor } from './modules/smart-editor.js';
+import { setupSpellFix } from './modules/spell-fix.js';
 
 const urlParams = new URLSearchParams(window.location.search);
 let currentFilePath = urlParams.get('filePath');
@@ -156,6 +157,7 @@ async function initSticky() {
   dom.stickyZoomOut.addEventListener('click', () => setFontSize(currentFontSize - 2));
 
   setupSmartEditor(dom.input, { onSave: saveNow });
+  setupSpellFix(dom.input);
 
   // Typing (and smart-editor edits) auto-save
   dom.input.addEventListener('input', () => {

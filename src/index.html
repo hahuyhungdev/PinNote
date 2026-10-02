@@ -160,7 +160,7 @@
             <circle cx="11" cy="11" r="8"/>
             <line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-          <input type="search" id="note-search-input" placeholder="Search notes or #tag" aria-label="Search notes or tags">
+          <input type="search" id="note-search-input" spellcheck="false" placeholder="Search notes or #tag" aria-label="Search notes or tags">
           <button id="btn-clear-search" class="clear-search-btn" title="Clear search" aria-label="Clear search" hidden>&times;</button>
         </div>
 
@@ -247,7 +247,7 @@
           
           <!-- Code Editor Area -->
           <div id="editor-wrapper" class="editor-wrapper">
-            <textarea id="markdown-input" spellcheck="false" placeholder="Write your markdown here..."></textarea>
+            <textarea id="markdown-input" spellcheck="true" placeholder="Write your markdown here..."></textarea>
           </div>
 
           <!-- Live Rendered Markdown Preview Area -->
@@ -296,7 +296,7 @@
             <circle cx="11" cy="11" r="8"/>
             <line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-          <input type="text" id="quick-input" placeholder="Jump to a note…" autocomplete="off" aria-label="Note name">
+          <input type="text" id="quick-input" spellcheck="false" placeholder="Jump to a note…" autocomplete="off" aria-label="Note name">
           <span class="esc-badge">ESC</span>
         </div>
         <div id="quick-results" class="quick-results" role="listbox">
@@ -404,15 +404,15 @@
             <section class="git-section git-settings">
               <label class="git-label" for="git-name">Commit as</label>
               <div class="git-row">
-                <input id="git-name" class="git-input" placeholder="Name" autocomplete="off">
-                <input id="git-email" class="git-input" placeholder="Email" autocomplete="off">
+                <input id="git-name" spellcheck="false" class="git-input" placeholder="Name" autocomplete="off">
+                <input id="git-email" spellcheck="false" class="git-input" placeholder="Email" autocomplete="off">
                 <button type="button" id="btn-git-identity" class="git-btn">Save</button>
               </div>
               <p class="git-hint">Saved in this vault's repository only, so your global (work) Git identity is not used here.</p>
 
               <label class="git-label" for="git-remote-url">Remote</label>
               <div class="git-row">
-                <input id="git-remote-url" class="git-input wide" placeholder="https://github.com/you/notes.git" autocomplete="off">
+                <input id="git-remote-url" spellcheck="false" class="git-input wide" placeholder="https://github.com/you/notes.git" autocomplete="off">
                 <button type="button" id="btn-git-remote" class="git-btn">Connect</button>
               </div>
 

@@ -1887,6 +1887,102 @@ button { cursor: pointer; }
   .ui-scale-label, .path-text { display: none; }
 }
 
+/* ==========================================
+   SPELLING FIX (Ctrl + Space)
+   ========================================== */
+.spell-fix {
+  position: fixed;
+  z-index: 300;
+  min-width: 11rem;
+  max-width: 18rem;
+  padding: var(--space-1);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  color: var(--text-normal);
+  animation: spell-fix-in 140ms var(--ease);
+}
+
+.spell-fix[hidden] { display: none; }
+
+@keyframes spell-fix-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* The word being fixed, drawn with the same wavy underline as in the editor */
+.spell-fix-head {
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.spell-fix-typo {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-decoration: underline wavy var(--danger);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  overflow-wrap: anywhere;
+}
+
+.spell-fix ul { list-style: none; }
+
+.spell-fix-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.spell-fix-option kbd {
+  flex: none;
+  min-width: 1.25rem;
+  padding: 0 0.25rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.25rem;
+  text-align: center;
+  color: var(--text-faint);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.spell-fix-option[aria-selected="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.spell-fix-option[aria-selected="true"] kbd {
+  color: var(--accent-hover);
+  border-color: var(--accent-glow);
+  background: var(--bg-primary);
+}
+
+.spell-fix-learn {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.spell-fix-none,
+.spell-fix-message {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+}
+
+.spell-fix-message { color: var(--text-muted); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
