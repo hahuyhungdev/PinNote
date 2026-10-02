@@ -9,18 +9,18 @@ An elegant, lightweight Obsidian-inspired Markdown note-taking app with detached
 - **Warm White Aesthetic**: Thoughtfully tuned warm-white paper palette (`#fcfbf9`) designed for long writing sessions with zero eye strain.
 - **Detached Floating Sticky Notes**: Pop out any note into an independent, compact desktop sticky window with **Always-on-Top** pinning and opacity control.
 - **Smart Markdown Editor**:
-  - Auto-closing brackets and quotes (`()`, `[]`, `{}`, `""`, `` ` ``).
+  - Auto-closing brackets and quotes (`()`, `[]`, `{}`, `""`, `` ` ``); typing the closer steps over it instead of doubling it.
   - Smart natural single-quote typing (contractions like *don't*, *it's* work seamlessly).
   - Tab-out navigation over markdown markers (`**bold|**` → `**bold**|`).
   - Intelligent list and task list continuation on Enter (`- [ ]`, `- `, `1. `).
   - Multi-line indentation (`Tab`) and unindentation (`Shift + Tab`).
-  - Quick format helpers (`Ctrl + B`, `Ctrl + I`, `Ctrl + S`).
+  - Quick format helpers (`Ctrl + B`, `Ctrl + I`, `Ctrl + S`); heading, list, task and quote buttons apply to the current or every selected line.
 - **Rich Markdown Rendering**:
   - Obsidian-style Callouts (`> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, etc.).
   - KaTeX mathematical equations (`$$ E = mc^2 $$` and inline math).
   - Code syntax highlighting with one-click copy buttons.
   - Interactive checklists with live two-way synchronization.
-  - Wiki links (`[[Note Title]]`) for fast cross-note linking.
+  - Wiki links (`[[Note Title]]`, `[[Note|shown text]]`, `[[Note#Heading]]`, `[[folder/Note]]`) for fast cross-note linking.
   - `#tag` cloud and search filtering.
 - **Revision History ("Back to History")**:
   - Automatic snapshots recorded on edit checkpoints and saves.
@@ -30,6 +30,7 @@ An elegant, lightweight Obsidian-inspired Markdown note-taking app with detached
 - **Date-Month Default Naming**: New notes automatically default to the current date and month (e.g. `16-09.md`).
 - **Quick Switcher**: Instant fuzzy search across all notes with keyboard navigation (`Ctrl + K`).
 - **Synchronized Scrolling**: Dual-pane editor and preview scroll in harmony.
+- **Resizable Sidebar**: Drag the sidebar edge (or focus it and use `←` / `→`); double-click resets the width. The width is remembered.
 
 ---
 
@@ -106,6 +107,7 @@ PinNote/
 │       ├── quick-switcher.js# Fuzzy search modal (Ctrl + K)
 │       └── ui-controls.js   # View modes, font zooming, opacity, sync scroll
 ├── test/                    # node:test suites (npm test)
+│   └── e2e/                 # Real-app Electron tests (npm run test:e2e)
 └── sample-vault/            # Starter markdown notes
 ```
 ---
@@ -116,7 +118,13 @@ PinNote/
 npm test
 ```
 
-Covers markdown sanitizing (XSS), callouts, math, syntax highlighting, checkbox indexing, tag extraction, note-name sanitizing and vault path confinement.
+Covers markdown sanitizing (XSS), callouts, math, syntax highlighting, checkbox indexing, wiki-link parsing and resolution, tag extraction, note-name sanitizing and vault path confinement.
+
+```bash
+npm run test:e2e
+```
+
+Launches the real Electron app through `playwright-core` with a throw-away profile (`--user-data-dir`) and a temporary vault, so your own settings and `Documents\PinNote Vault` are never touched. It covers the smart editor, notes and wiki links, sticky windows (live sync, delete, close flush, relaunch) and the sidebar/toolbar layout. Run it from Windows (`cmd`/PowerShell): the Electron binary in `node_modules` is platform-specific.
 
 ## 🔒 Security Model
 
