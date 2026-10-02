@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file:; font-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>PinNote Sticky</title>
 
   <!-- KaTeX & Highlight.js CSS -->
@@ -11,22 +12,12 @@
   <link rel="stylesheet" href="styles.css">
 
   <style>
-    body {
-      background: var(--bg-primary);
-      overflow: hidden;
-      font-size: 13px;
-      margin: 0;
-      padding: 0;
-      user-select: none;
-    }
-
     .sticky-container {
       display: flex;
       flex-direction: column;
       height: 100vh;
       width: 100vw;
       border: 1px solid var(--border-color);
-      box-sizing: border-box;
       background: var(--bg-primary);
     }
 
@@ -34,21 +25,28 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 34px;
+      gap: var(--space-2);
+      height: 2.75rem;
       background: var(--bg-secondary);
       border-bottom: 1px solid var(--border-color);
-      padding: 0 8px;
+      padding: 0 var(--space-1) 0 var(--space-3);
       -webkit-app-region: drag;
     }
 
     .sticky-title {
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-size: 12px;
+      gap: var(--space-2);
+      min-width: 0;
+      font-family: var(--font-display);
+      font-size: var(--text-md);
       font-weight: 600;
-      color: var(--accent-color);
-      max-width: 200px;
+      color: var(--text-normal);
+    }
+
+    .sticky-title svg { color: var(--accent-color); flex-shrink: 0; }
+
+    #sticky-filename {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -57,31 +55,41 @@
     .sticky-controls {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: var(--space-1);
       -webkit-app-region: no-drag;
     }
 
-    .sticky-pin-btn {
-      background: transparent;
-      border: none;
-      color: var(--text-muted);
+    .sticky-pin-btn.pinned {
+      color: var(--pin-color);
+      background: var(--pin-bg);
+    }
+
+    #sticky-opacity {
+      width: 4rem;
+      accent-color: var(--accent-color);
       cursor: pointer;
-      padding: 3px 5px;
-      border-radius: var(--radius-sm);
+    }
+
+    .sticky-toolbar {
       display: flex;
       align-items: center;
-      justify-content: center;
-      transition: all 0.15s ease;
+      justify-content: space-between;
+      gap: var(--space-2);
+      padding: var(--space-1) var(--space-2);
+      background: var(--bg-tertiary);
+      border-bottom: 1px solid var(--border-subtle);
     }
 
-    .sticky-pin-btn:hover {
-      background: var(--bg-surface-hover);
-      color: var(--text-normal);
+    .toolbar-left, .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
     }
 
-    .sticky-pin-btn.pinned {
-      color: #f9e2af;
-      filter: drop-shadow(0 0 3px rgba(249, 226, 175, 0.5));
+    .sticky-word-count {
+      font-size: var(--text-sm);
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
     }
 
     .sticky-body {
@@ -91,24 +99,8 @@
       position: relative;
     }
 
-    .sticky-toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 4px 8px;
-      background: var(--bg-tertiary);
-      border-bottom: 1px solid var(--border-subtle);
-      font-size: 11px;
-      -webkit-app-region: no-drag;
-    }
-
-    .toolbar-left, .toolbar-right {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
     #sticky-input {
+      flex: 1;
       width: 100%;
       height: 100%;
       border: none;
@@ -118,38 +110,31 @@
       font-family: var(--font-mono);
       font-size: var(--editor-font-size, 18px);
       line-height: 1.6;
-      padding: 12px 14px;
+      padding: var(--space-3) var(--space-4);
       resize: none;
-      box-sizing: border-box;
       user-select: text;
     }
 
     #sticky-preview {
-      width: 100%;
-      padding: 12px 16px;
+      flex: 1;
+      padding: var(--space-3) var(--space-4);
       overflow-y: auto;
       height: 100%;
-      box-sizing: border-box;
       user-select: text;
-      font-size: var(--editor-font-size, 18px);
     }
 
-    /* Split layout in sticky */
-    .sticky-split #sticky-input {
-      width: 50%;
-      border-right: 1px solid var(--border-color);
-    }
-    .sticky-split #sticky-preview {
-      width: 50%;
-      display: block !important;
-    }
+    .sticky-mode-edit #sticky-preview { display: none; }
+    .sticky-mode-prev #sticky-input { display: none; }
+    .sticky-mode-split #sticky-input { border-right: 1px solid var(--border-color); }
+    .sticky-mode-split #sticky-input,
+    .sticky-mode-split #sticky-preview { width: 50%; }
   </style>
 </head>
 <body>
   <div class="sticky-container">
     <div class="sticky-header">
       <div class="sticky-title">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
         </svg>
@@ -157,46 +142,48 @@
       </div>
       <div class="sticky-controls">
         <!-- Pin Button (Per-Note Always-On-Top) -->
-        <button id="sticky-pin" class="sticky-pin-btn pinned" title="Pin this sticky note always-on-top">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+        <button id="sticky-pin" class="action-btn icon-only sticky-pin-btn pinned" title="Pinned on top — click to unpin" aria-label="Keep on top" aria-pressed="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <line x1="12" y1="17" x2="12" y2="22"/>
             <path d="M5 17h14v-2l-2-2V5a2 2 0 0 0-2-2h-6a2 2 0 0 0-2 2v8l-2 2v2z"/>
           </svg>
         </button>
 
-        <!-- Opacity Slider -->
-        <input type="range" id="sticky-opacity" min="0.3" max="1.0" step="0.05" value="1.0" style="width:40px; cursor:pointer;" title="Window Opacity">
+        <input type="range" id="sticky-opacity" min="0.3" max="1.0" step="0.05" value="1.0" title="Window opacity" aria-label="Window opacity">
 
-        <!-- Min/Max/Close -->
-        <button id="sticky-min" class="win-btn" title="Minimize">
-          <svg viewBox="0 0 12 12" width="9" height="9"><line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1.2"/></svg>
+        <button id="sticky-min" class="win-btn" title="Minimize" aria-label="Minimize">
+          <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1.2"/></svg>
         </button>
-        <button id="sticky-close" class="win-btn win-close" title="Close Sticky">&times;</button>
+        <button id="sticky-close" class="win-btn win-close" title="Close sticky" aria-label="Close sticky">
+          <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M1,1 L11,11 M11,1 L1,11" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
       </div>
     </div>
 
     <div class="sticky-toolbar">
       <div class="toolbar-left">
-        <div class="segmented-control">
+        <div class="segmented-control" role="group" aria-label="View mode">
           <button id="mode-edit" class="segment-btn active" title="Editor">Edit</button>
-          <button id="mode-split" class="segment-btn" title="Split View">Split</button>
-          <button id="mode-prev" class="segment-btn" title="Preview">Prev</button>
+          <button id="mode-split" class="segment-btn" title="Split view">Split</button>
+          <button id="mode-prev" class="segment-btn" title="Preview">Preview</button>
         </div>
-        <button id="sticky-zoom-out" class="fmt-btn" style="padding:1px 5px; font-size:10px;" title="Zoom Out">A-</button>
-        <button id="sticky-zoom-in" class="fmt-btn" style="padding:1px 5px; font-size:10px;" title="Zoom In">A+</button>
+        <div class="zoom-group">
+          <button id="sticky-zoom-out" class="fmt-btn" title="Smaller text" aria-label="Smaller text">A−</button>
+          <button id="sticky-zoom-in" class="fmt-btn" title="Larger text" aria-label="Larger text">A+</button>
+        </div>
       </div>
       <div class="toolbar-right">
-        <span id="sticky-word-count" style="font-size:10px; color:var(--text-faint);">0w</span>
-        <span id="sticky-status" class="save-status saved" style="font-size:10px;">Saved</span>
+        <span id="sticky-word-count" class="sticky-word-count">0 words</span>
+        <span id="sticky-status" class="save-status saved" role="status" aria-live="polite">Saved</span>
       </div>
     </div>
 
-    <div id="sticky-body" class="sticky-body">
-      <textarea id="sticky-input" spellcheck="false" placeholder="Type notes here..."></textarea>
-      <div id="sticky-preview" class="markdown-rendered" style="display:none;"></div>
+    <div id="sticky-body" class="sticky-body sticky-mode-edit">
+      <textarea id="sticky-input" spellcheck="false" placeholder="Type notes here…" aria-label="Note text"></textarea>
+      <div id="sticky-preview" class="markdown-rendered"></div>
     </div>
   </div>
 
-  <script src="sticky.js"></script>
+  <script type="module" src="sticky.js"></script>
 </body>
 </html>

@@ -1,0 +1,127 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+
+const { DEFAULT_GUARD_RULES, parseRules, scanDiff, scanPaths } = require('../src/lib/commit-guard');
+
+const matches = (text, rulesText = DEFAULT_GUARD_RULES) =>
+  parseRules(rulesText).rules.some(r => r.re.test(text));
+
+test('parseRules reads words and /regex/ lines, skipping comments and reporting bad patterns', () => {
+  const { rules, errors } = parseRules('# comment\n\nnexon\nfoo.bar\n/api[_-]?key/i\n/unclosed(/\n');
+  assert.deepEqual(rules.map(r => r.source), ['nexon', 'foo.bar', '/api[_-]?key/i']);
+  assert.equal(rules[0].re.test('Talked to NEXON today'), true, 'words are case-insensitive');
+  assert.equal(rules[1].re.test('fooXbar'), false, 'words are literal, not regex');
+  assert.equal(rules[1].re.test('see foo.bar'), true);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /unclosed/);
+});
+
+test('scanDiff reports added lines with file and new line number, ignoring removed and context lines', () => {
+  const diff = [
+    'diff --git a/Work/Meeting.md b/Work/Meeting.md',
+    'index 1..2 100644',
+    '--- a/Work/Meeting.md',
+    '+++ b/Work/Meeting.md',
+    '@@ -3,0 +4,2 @@',
+    '+Call with Nexon about pricing',
+    '+nothing here',
+    '@@ -10 +12 @@',
+    '-old nexon line',
+    '+apiKey = "abc123"',
+    'diff --git a/New.md b/New.md',
+    'new file mode 100644',
+    '--- /dev/null',
+    '+++ b/New.md',
+    '@@ -0,0 +1 @@',
+    '+clean note'
+  ].join('\n');
+  const findings = scanDiff(diff, parseRules('nexon\n/api[_-]?key/i').rules);
+  assert.deepEqual(findings.map(f => [f.file, f.line, f.rule]), [
+    ['Work/Meeting.md', 4, 'nexon'],
+    ['Work/Meeting.md', 12, '/api[_-]?key/i']
+  ]);
+  assert.equal(findings[0].excerpt, 'Call with Nexon about pricing');
+});
+
+test('scanPaths flags secret-looking file names', () => {
+  const { rules } = parseRules(DEFAULT_GUARD_RULES);
+  assert.deepEqual(scanPaths(['.env', 'config/.env.local', 'notes/env.md', 'Nexon roadmap.md'], rules).map(f => f.file),
+    ['.env', 'config/.env.local', 'Nexon roadmap.md']);
+});
+
+test('default rules catch common secrets and company names', () => {
+  for (const secret of [
+    'nexon internal roadmap',
+    'apiKey: 123456',
+    'api_key=abc',
+    'OPENAI_API_KEY=sk-live-abc',
+    'export DB_PASSWORD=hunter2',
+    'password = hunter2',
+    'token: eyJhbGciOi',
+    '-----BEGIN RSA PRIVATE KEY-----',
+    'AKIAIOSFODNN7EXAMPLE',
+    'ghp_0123456789abcdefghijklmnopqrstuvwxyzAB',
+    'nexondv.com wiki',
+    'CONFIDENTIAL: Q3 plan',
+    'Internal only - do not share',
+    'Tài liệu bảo mật',
+    'Thông tin nội bộ',
+    'mật khẩu: 123456',
+    'client_secret: abc',
+    'postgres://admin:S3cret@db.internal:5432/app',
+    'Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456',
+    'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U',
+    'sk-proj-abcdefghijklmnopqrstuvwx1234',
+    'AIzaSyA1234567890abcdefghijklmnopqrstuv',
+    'sk_live_abcdefghijklmnop1234',
+    'server at 192.168.1.20',
+    'vpn 10.0.12.5',
+    'Gọi 0912345678'
+  ]) {
+    assert.equal(matches(secret), true, secret);
+  }
+});
+
+test('default rules leave ordinary notes alone', () => {
+  for (const plain of [
+    'I learned about environment variables today',
+    'The key idea of the talk',
+    'Tokenization in NLP',
+    'Reset my password next week',
+    'Use a .env file for local settings',
+    'The meeting was confidentially great',
+    'Version 1.2.3.4 released',
+    'https://github.com/me/notes',
+    'Ask-me-anything session',
+    'Order #20240912 shipped'
+  ]) {
+    assert.equal(matches(plain), false, plain);
+  }
+});
+
+test('findings carry a readable label: the word itself, or the comment heading above a regex', () => {
+  const { rules } = parseRules('# Internal network addresses\n/\\b192\\.168\\.\\d+\\.\\d+\\b/\n\n/orphan/\nnexon');
+  assert.deepEqual(rules.map(r => r.label), ['Internal network addresses', '/orphan/', '"nexon"']);
+  const [finding] = scanDiff('+++ b/a.md\n@@ -0,0 +1 @@\n+server 192.168.1.2', rules);
+  assert.equal(finding.label, 'Internal network addresses');
+  assert.equal(scanPaths(['Nexon.md'], rules)[0].label, '"nexon"');
+});
+
+test('an added line that starts with "++ " is still scanned, not mistaken for a file header', () => {
+  const diff = [
+    '--- a/a.md',
+    '+++ b/a.md',
+    '@@ -1,0 +2,2 @@',
+    '+++ API_KEY=abc123',
+    '+fine'
+  ].join('\n');
+  const findings = scanDiff(diff, parseRules('/api[_-]?key/i').rules);
+  assert.deepEqual(findings.map(f => [f.file, f.line]), [['a.md', 2]]);
+});
+
+test('rules that could hang the scan (nested quantifiers) are rejected', () => {
+  const { rules, errors } = parseRules('/(a+)+$/\n/(\\w*)*x/\n/ok+/');
+  assert.deepEqual(rules.map(r => r.source), ['/ok+/']);
+  assert.equal(errors.length, 2);
+  assert.match(errors[0], /slow/);
+});

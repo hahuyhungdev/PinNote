@@ -3,13 +3,16 @@
  * High-leverage coordinator binding Vault Management, Smart Editor, Note History, and Floating Sticky Notes
  */
 
-const { renderMarkdown, toggleTaskCheckbox, extractTags, attachCodeCopyButtons } = require('./modules/markdown');
-const { setupSmartEditor, insertFormat } = require('./modules/smart-editor');
-const { recordNoteSnapshot } = require('./modules/history');
-const { HistoryModal } = require('./modules/history-modal');
-const { NoteManager, getDefaultNoteName } = require('./modules/note-manager');
-const { QuickSwitcher } = require('./modules/quick-switcher');
-const { UIControls } = require('./modules/ui-controls');
+import { renderMarkdown, extractTags, enhancePreview, flattenNoteFiles, noteTitle, resolveWikiLink, getNoteStatus, setNoteStatus } from './modules/preview.js';
+import { STATUS_FILTERS, countByStatus, findFolder, folderTrail } from './modules/note-filter.js';
+import { setupSmartEditor, insertFormat } from './modules/smart-editor.js';
+import { recordNoteSnapshot } from './modules/history.js';
+import { HistoryModal } from './modules/history-modal.js';
+import { NoteManager, getDefaultNoteName } from './modules/note-manager.js';
+import { QuickSwitcher } from './modules/quick-switcher.js';
+import { UIControls } from './modules/ui-controls.js';
+import { GitPanel } from './modules/git-panel.js';
+import { Outline } from './modules/outline.js';
 
 // Application State
 const state = {
@@ -18,64 +21,97 @@ const state = {
   notesTree: [],
   isDirty: false,
   saveTimeout: null,
-  renderFrame: null
+  renderFrame: null,
+  tagSearchToken: 0,
+  openToken: 0,
+  statusFilter: STATUS_FILTERS.includes(localStorage.getItem('pinnote_status_filter')) ? localStorage.getItem('pinnote_status_filter') : 'all',
+  folderScope: localStorage.getItem('pinnote_folder_scope') || null,
+  collapsedFolders: new Set(readJson('pinnote_collapsed_folders', [])),
+  localOnly: new Set(),
+  gitRefreshTimer: null
 };
+
+function readJson(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key));
+    return Array.isArray(value) ? value : fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+const $ = (id) => document.getElementById(id);
 
 // DOM References
 const dom = {
   // Window & Header
-  winMin: document.getElementById('win-min'),
-  winMax: document.getElementById('win-max'),
-  winClose: document.getElementById('win-close'),
-  opacitySlider: document.getElementById('opacity-slider'),
-  opacityValue: document.getElementById('opacity-value'),
+  winMin: $('win-min'),
+  winMax: $('win-max'),
+  winClose: $('win-close'),
+  opacitySlider: $('opacity-slider'),
+  opacityValue: $('opacity-value'),
 
   // Modes & Workspace
-  btnModeEditor: document.getElementById('btn-mode-editor'),
-  btnModeSplit: document.getElementById('btn-mode-split'),
-  btnModePreview: document.getElementById('btn-mode-preview'),
-  workspaceContainer: document.getElementById('workspace-container'),
-  editorWrapper: document.getElementById('editor-wrapper'),
-  previewWrapper: document.getElementById('preview-wrapper'),
+  btnModeEditor: $('btn-mode-editor'),
+  btnModeSplit: $('btn-mode-split'),
+  btnModePreview: $('btn-mode-preview'),
+  workspaceContainer: $('workspace-container'),
+  editorWrapper: $('editor-wrapper'),
+  previewWrapper: $('preview-wrapper'),
 
   // Sidebar & Vault
-  btnToggleSidebar: document.getElementById('btn-toggle-sidebar'),
-  sidebar: document.getElementById('sidebar'),
-  vaultNameDisplay: document.getElementById('vault-name-display'),
-  currentVaultPath: document.getElementById('current-vault-path'),
-  btnRefreshVault: document.getElementById('btn-refresh-vault'),
-  btnChangeVault: document.getElementById('btn-change-vault'),
-  btnNewNote: document.getElementById('btn-new-note'),
-  noteSearchInput: document.getElementById('note-search-input'),
-  btnClearSearch: document.getElementById('btn-clear-search'),
-  noteTree: document.getElementById('note-tree'),
-  tagCloud: document.getElementById('tag-cloud'),
+  btnToggleSidebar: $('btn-toggle-sidebar'),
+  sidebar: $('sidebar'),
+  sidebarResizer: $('sidebar-resizer'),
+  vaultNameDisplay: $('vault-name-display'),
+  currentVaultPath: $('current-vault-path'),
+  btnRefreshVault: $('btn-refresh-vault'),
+  btnChangeVault: $('btn-change-vault'),
+  btnNewNote: $('btn-new-note'),
+  btnNewFolder: $('btn-new-folder'),
+  noteSearchInput: $('note-search-input'),
+  btnClearSearch: $('btn-clear-search'),
+  noteTree: $('note-tree'),
+  statusChips: [...document.querySelectorAll('.filter-btn[data-filter]')],
+  folderScope: $('folder-scope'),
+  folderScopePath: $('folder-scope-path'),
+  btnClearScope: $('btn-clear-scope'),
+  tagCloud: $('tag-cloud'),
 
   // Note Info & Status
-  activeNoteBadge: document.getElementById('active-note-badge'),
-  saveStatusIndicator: document.getElementById('save-status-indicator'),
-  btnNoteHistory: document.getElementById('btn-note-history'),
-  btnPopoutNote: document.getElementById('btn-popout-note'),
-  btnZoomOut: document.getElementById('btn-zoom-out'),
-  btnZoomIn: document.getElementById('btn-zoom-in'),
-  zoomLevelText: document.getElementById('zoom-level-text'),
+  activeNoteBadge: $('active-note-badge'),
+  noteStatus: $('note-status'),
+  saveStatusIndicator: $('save-status-indicator'),
+  btnNoteHistory: $('btn-note-history'),
+  btnPopoutNote: $('btn-popout-note'),
+  btnZoomOut: $('btn-zoom-out'),
+  btnZoomIn: $('btn-zoom-in'),
+  zoomLevelText: $('zoom-level-text'),
+  btnUiSmaller: $('btn-ui-smaller'),
+  btnUiLarger: $('btn-ui-larger'),
+  uiScaleText: $('ui-scale-text'),
 
   // Editor & Preview
-  markdownInput: document.getElementById('markdown-input'),
-  markdownPreview: document.getElementById('markdown-preview'),
+  markdownInput: $('markdown-input'),
+  markdownPreview: $('markdown-preview'),
 
   // Statusbar
-  wordCount: document.getElementById('word-count'),
-  charCount: document.getElementById('char-count'),
-  lineCount: document.getElementById('line-count'),
+  wordCount: $('word-count'),
+  charCount: $('char-count'),
+  lineCount: $('line-count'),
 
   // Modals
-  btnQuickSwitcher: document.getElementById('btn-quick-switcher'),
-  quickModal: document.getElementById('quick-modal'),
-  quickInput: document.getElementById('quick-input'),
-  quickResults: document.getElementById('quick-results'),
+  btnQuickSwitcher: $('btn-quick-switcher'),
+  quickModal: $('quick-modal'),
+  quickInput: $('quick-input'),
+  quickResults: $('quick-results'),
 
-  historyModal: document.getElementById('history-modal')
+  historyModal: $('history-modal'),
+  gitModal: $('git-modal'),
+  btnOutline: $('btn-outline'),
+  outlinePane: $('outline-pane'),
+  outlineList: $('outline-list'),
+  gitStatusItem: $('git-status-item')
 };
 
 // Module Instances
@@ -83,32 +119,47 @@ let noteManager;
 let historyModal;
 let quickSwitcher;
 let uiControls;
+let gitPanel;
+let outline;
+
+const allFiles = () => flattenNoteFiles(state.notesTree);
+const fileName = (p) => p.split(/[/\\]/).pop();
 
 // ==========================================
 // INITIALIZATION
 // ==========================================
 
 async function initApp() {
-  document.documentElement.setAttribute('data-theme', 'warm-white');
-
   noteManager = new NoteManager();
 
   uiControls = new UIControls({
     dom,
-    onModeChange: () => schedulePreviewUpdate(),
-    onFontSizeChange: () => {}
+    onModeChange: () => schedulePreviewUpdate()
+  });
+
+  outline = new Outline({
+    paneEl: dom.outlinePane,
+    listEl: dom.outlineList,
+    toggleBtn: dom.btnOutline,
+    editorEl: dom.markdownInput,
+    previewWrapper: dom.previewWrapper,
+    previewEl: dom.markdownPreview,
+    getMode: () => uiControls.currentViewMode,
+    // Jumping positions editor and preview separately; keep scroll-sync from undoing it
+    beforeJump: () => uiControls.pauseSyncScroll()
   });
 
   historyModal = new HistoryModal({
     modalEl: dom.historyModal,
     onRestoreNote: (filePath, restoredContent) => {
       if (state.activeNotePath === filePath) {
+        clearTimeout(state.saveTimeout);
         dom.markdownInput.value = restoredContent;
         state.isDirty = false;
+        syncStatusFromEditor();
         schedulePreviewUpdate();
         updateStats();
-        dom.saveStatusIndicator.textContent = 'Restored';
-        dom.saveStatusIndicator.className = 'save-status saved';
+        setSaveStatus('Restored', 'saved');
       }
     }
   });
@@ -120,25 +171,33 @@ async function initApp() {
     onSelectNote: (filePath) => openNote(filePath)
   });
 
+  gitPanel = new GitPanel({
+    modalEl: dom.gitModal,
+    statusItemEl: dom.gitStatusItem,
+    getVaultPath: () => state.currentVaultPath,
+    // Git must see what is on screen, so pending edits are written first
+    beforeGit: async () => { if (state.isDirty) await saveCurrentNote(true); },
+    getFolders: () => listFolders(state.notesTree),
+    onStatus: (status) => applyLocalOnly(status.localOnly || [])
+  });
+
   setupEventListeners();
-  setupSmartKeyboard();
+  setupSmartEditor(dom.markdownInput, { onSave: () => saveCurrentNote(true) });
   setupCrossWindowSync();
 
   // Load Vault & Notes
   try {
-    const savedVault = localStorage.getItem('pinnote_vault_path');
-    const defaultPath = await window.pinNoteAPI.getDefaultVaultDir();
-    state.currentVaultPath = savedVault || defaultPath;
-
+    // Main owns the vault path; the old localStorage value is only offered once for migration
+    state.currentVaultPath = await window.pinNoteAPI.getCurrentVault(localStorage.getItem('pinnote_vault_path'));
+    localStorage.removeItem('pinnote_vault_path');
     await refreshVault();
 
+    const files = allFiles();
     const savedLastNote = localStorage.getItem('pinnote_last_note');
-    if (savedLastNote && state.notesTree.some(item => item.path === savedLastNote)) {
+    if (savedLastNote && files.some(item => item.path === savedLastNote)) {
       openNote(savedLastNote);
-    } else if (state.notesTree.length > 0) {
-      const firstFile = state.notesTree.find(item => item.type === 'file');
-      if (firstFile) openNote(firstFile.path);
-      else createNewNote();
+    } else if (files.length > 0) {
+      openNote(files[0].path);
     } else {
       createNewNote();
     }
@@ -152,56 +211,261 @@ async function initApp() {
 // ==========================================
 
 async function refreshVault() {
-  const defaultVault = await window.pinNoteAPI.getDefaultVaultDir();
-  if (!state.currentVaultPath) state.currentVaultPath = defaultVault;
-
   const result = await window.pinNoteAPI.readVaultTree(state.currentVaultPath);
-  state.currentVaultPath = result.vaultPath || defaultVault;
+  state.currentVaultPath = result.vaultPath;
   state.notesTree = result.items || [];
 
   const folderName = state.currentVaultPath.split(/[/\\]/).filter(Boolean).pop() || 'PinNote Vault';
-  if (dom.vaultNameDisplay) dom.vaultNameDisplay.textContent = folderName;
-  if (dom.currentVaultPath) dom.currentVaultPath.textContent = state.currentVaultPath;
+  dom.vaultNameDisplay.textContent = folderName;
+  dom.vaultNameDisplay.title = state.currentVaultPath;
+  dom.currentVaultPath.textContent = state.currentVaultPath;
+  dom.currentVaultPath.title = state.currentVaultPath;
 
-  renderTreeUI();
+  // Re-checks the remembered folder scope against the fresh tree and renders the sidebar
+  await setFolderScope(state.folderScope);
   updateTagsCloud();
+  scheduleGitRefresh(0);
 }
 
-function renderTreeUI() {
+async function renderTreeUI() {
+  const query = dom.noteSearchInput.value.trim();
+  let tagMatches = null;
+
+  if (query.startsWith('#') && query.length > 1) {
+    const token = ++state.tagSearchToken;
+    const paths = await window.pinNoteAPI.findNotesWithTag(state.currentVaultPath, query);
+    if (token !== state.tagSearchToken) return; // a newer search superseded this one
+    tagMatches = paths;
+  } else {
+    state.tagSearchToken++;
+  }
+
   noteManager.renderTree(
     state.notesTree,
     dom.noteTree,
-    dom.noteSearchInput.value,
+    query,
     state.activeNotePath,
     {
       onOpen: (path) => openNote(path),
       onDelete: (path, name) => deleteNote(path, name),
       onPinToggle: () => renderTreeUI(),
-      onRename: (oldPath, newPath, newName) => {
-        if (state.activeNotePath === oldPath) {
-          state.activeNotePath = newPath;
-          localStorage.setItem('pinnote_last_note', newPath);
-          dom.activeNoteBadge.textContent = `${newName}.md`;
-        }
-        refreshVault();
-      }
-    }
+      onRename: (oldPath, newPath) => handleRenamed(oldPath, newPath),
+      onToggleFolder: (folderPath) => toggleFolder(folderPath),
+      onScopeFolder: (folderPath) => setFolderScope(folderPath),
+      onNewNoteIn: (folderPath) => createNewNote(null, folderPath),
+      onNewFolderIn: (folderPath) => createFolder(folderPath)
+    },
+    { tagMatches, status: state.statusFilter, scope: state.folderScope, collapsed: state.collapsedFolders, localOnly: state.localOnly }
   );
+  updateStatusCounts();
+}
+
+// ==========================================
+// FOLDERS (real directories in the vault)
+// ==========================================
+
+function toggleFolder(folderPath) {
+  if (state.collapsedFolders.has(folderPath)) state.collapsedFolders.delete(folderPath);
+  else state.collapsedFolders.add(folderPath);
+  localStorage.setItem('pinnote_collapsed_folders', JSON.stringify([...state.collapsedFolders]));
+  renderTreeUI();
+}
+
+function listFolders(items, out = []) {
+  for (const item of items) {
+    if (item.type !== 'directory') continue;
+    out.push({ path: item.path, relativePath: item.relativePath });
+    listFolders(item.children || [], out);
+  }
+  return out;
+}
+
+// ==========================================
+// GIT
+// ==========================================
+
+function applyLocalOnly(paths) {
+  const next = new Set(paths);
+  if (next.size === state.localOnly.size && paths.every(p => state.localOnly.has(p))) return;
+  state.localOnly = next;
+  renderTreeUI();
+}
+
+/** Keep the status-bar Git summary current without running git on every keystroke */
+function scheduleGitRefresh(delay = 1500) {
+  clearTimeout(state.gitRefreshTimer);
+  state.gitRefreshTimer = setTimeout(() => gitPanel.refresh(), delay);
+}
+
+/** After a pull, re-read the open note unless it has unsaved typing */
+async function reloadActiveNoteFromDisk() {
+  if (!state.activeNotePath || state.isDirty) return;
+  const filePath = state.activeNotePath;
+  const content = await noteManager.readNote(filePath).catch(() => null);
+  if (state.activeNotePath !== filePath || state.isDirty) return;
+  if (content === null) return clearEditor();
+  if (content === dom.markdownInput.value) return;
+  dom.markdownInput.value = content;
+  updatePreviewNow();
+  updateStats();
+  syncStatusFromEditor();
+  setSaveStatus('Updated from Git', 'saved');
+}
+
+async function createFolder(parentPath = state.folderScope) {
+  // Make sure the parent is open so the name input appears inside it
+  if (parentPath && state.collapsedFolders.has(parentPath)) {
+    state.collapsedFolders.delete(parentPath);
+    localStorage.setItem('pinnote_collapsed_folders', JSON.stringify([...state.collapsedFolders]));
+    await renderTreeUI();
+  }
+  const name = await noteManager.promptFolderName(dom.noteTree, parentPath);
+  if (!name) return;
+  try {
+    await window.pinNoteAPI.createFolder(state.currentVaultPath, parentPath, name);
+    await refreshVault();
+  } catch (err) {
+    alert(`Could not create folder: ${err.message}`);
+  }
+}
+
+async function moveNote(filePath, targetDir) {
+  // A pending autosave would otherwise target the old location after the move
+  if (filePath === state.activeNotePath && state.isDirty) await saveCurrentNote(true);
+  try {
+    const newPath = await noteManager.moveNote(filePath, targetDir);
+    if (newPath !== filePath) handleRenamed(filePath, newPath);
+  } catch (err) {
+    alert(`Could not move note: ${err.message}`);
+  }
+}
+
+/** Narrow the sidebar to one folder (and its subfolders); null shows the whole vault */
+function setFolderScope(folderPath) {
+  state.folderScope = folderPath && findFolder(state.notesTree, folderPath) ? folderPath : null;
+  if (state.folderScope) localStorage.setItem('pinnote_folder_scope', state.folderScope);
+  else localStorage.removeItem('pinnote_folder_scope');
+
+  dom.folderScope.hidden = !state.folderScope;
+  dom.folderScopePath.textContent = folderTrail(state.notesTree, state.folderScope).map(f => f.name).join(' / ');
+  dom.folderScopePath.title = state.folderScope || '';
+  return renderTreeUI();
+}
+
+// ==========================================
+// NOTE STATUS (stored in each note's front-matter)
+// ==========================================
+
+function updateStatusCounts() {
+  const counts = countByStatus(state.notesTree, state.folderScope);
+  dom.statusChips.forEach(chip => {
+    chip.querySelector('.filter-count').textContent = String(counts[chip.dataset.filter]);
+  });
+}
+
+function renderStatusChips() {
+  dom.statusChips.forEach(chip => chip.setAttribute('aria-pressed', String(chip.dataset.filter === state.statusFilter)));
+}
+
+function setStatusFilter(filter) {
+  state.statusFilter = filter;
+  localStorage.setItem('pinnote_status_filter', filter);
+  renderStatusChips();
+  renderTreeUI();
+}
+
+// Walks state.notesTree itself: allFiles() comes back through the preload bridge as copies
+function findTreeFile(items, filePath) {
+  for (const item of items) {
+    if (item.type === 'file' && item.path === filePath) return item;
+    const found = item.type === 'directory' && findTreeFile(item.children || [], filePath);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Record a note's status in the cached tree; re-render the sidebar only when it changed */
+function applyStatusToTree(filePath, status) {
+  const file = findTreeFile(state.notesTree, filePath);
+  if (!file || file.status === status) return;
+  file.status = status;
+  renderTreeUI();
+}
+
+function renderStatusPicker(status) {
+  dom.noteStatus.value = status || '';
+  dom.noteStatus.parentElement.dataset.status = status || '';
+}
+
+/** The editor text is the source of truth: reflect its front-matter in the picker and sidebar */
+function syncStatusFromEditor() {
+  if (!state.activeNotePath) return;
+  const status = getNoteStatus(dom.markdownInput.value);
+  renderStatusPicker(status);
+  applyStatusToTree(state.activeNotePath, status);
+}
+
+function setActiveStatus(status) {
+  if (!state.activeNotePath) return;
+  const el = dom.markdownInput;
+  const before = el.value;
+  const next = setNoteStatus(before, status || null);
+  if (next !== before) {
+    // The header sits above the text, so shift the cursor by however much it grew or shrank
+    const delta = next.length - before.length;
+    const { selectionStart, selectionEnd } = el;
+    el.value = next;
+    el.setSelectionRange(Math.max(0, selectionStart + delta), Math.max(0, selectionEnd + delta));
+    queueAutoSave();
+    updateStats();
+    schedulePreviewUpdate();
+  }
+  syncStatusFromEditor();
+}
+
+function handleRenamed(oldPath, newPath) {
+  if (state.activeNotePath === oldPath) {
+    state.activeNotePath = newPath;
+    localStorage.setItem('pinnote_last_note', newPath);
+    dom.activeNoteBadge.textContent = fileName(newPath);
+  }
+  refreshVault();
+}
+
+function setActiveNoteUI(filePath) {
+  dom.activeNoteBadge.textContent = filePath ? fileName(filePath) : 'No note open';
+  dom.activeNoteBadge.title = filePath ? `${filePath}\nClick to rename` : '';
+  document.title = filePath ? `${noteTitle(fileName(filePath))} — PinNote` : 'PinNote';
+  dom.noteStatus.disabled = !filePath;
+  if (!filePath) renderStatusPicker(null);
 }
 
 async function openNote(filePath) {
-  if (state.isDirty && state.activeNotePath && state.activeNotePath !== filePath) {
+  // Already open: re-reading from disk would discard typing that has not been saved yet
+  if (filePath === state.activeNotePath) {
+    state.openToken++; // also cancels an older open that is still reading
+    return;
+  }
+  const token = ++state.openToken;
+
+  if (state.activeNotePath && state.isDirty) {
     await saveCurrentNote(true);
   }
 
   try {
     const content = await noteManager.readNote(filePath);
+    // A later click won the race; do not let this older read overwrite it
+    if (token !== state.openToken) return;
+    clearTimeout(state.saveTimeout);
     state.activeNotePath = filePath;
     state.isDirty = false;
     localStorage.setItem('pinnote_last_note', filePath);
 
     dom.markdownInput.value = content || '';
-    dom.activeNoteBadge.textContent = filePath.split(/[/\\]/).pop();
+    dom.markdownInput.scrollTop = 0;
+    setActiveNoteUI(filePath);
+    syncStatusFromEditor();
+    setSaveStatus('Saved', 'saved');
 
     updatePreviewNow();
     updateStats();
@@ -211,108 +475,129 @@ async function openNote(filePath) {
     recordNoteSnapshot(filePath, content || '', false);
   } catch (err) {
     console.error('Failed to open note:', err);
+    setSaveStatus('Could not open note', 'error');
   }
 }
 
+function setSaveStatus(text, kind) {
+  dom.saveStatusIndicator.textContent = text;
+  dom.saveStatusIndicator.className = `save-status ${kind}`;
+}
+
 async function saveCurrentNote(forceSnapshot = false) {
+  clearTimeout(state.saveTimeout);
   if (!state.activeNotePath) return;
 
-  dom.saveStatusIndicator.textContent = 'Saving...';
-  dom.saveStatusIndicator.className = 'save-status saving';
+  const filePath = state.activeNotePath;
+  const content = dom.markdownInput.value;
+  setSaveStatus('Saving…', 'saving');
 
   try {
-    const content = dom.markdownInput.value;
-    await noteManager.saveNote(state.activeNotePath, content);
-    state.isDirty = false;
-
-    // Record revision snapshot into history!
-    recordNoteSnapshot(state.activeNotePath, content, forceSnapshot);
-
-    dom.saveStatusIndicator.textContent = 'Saved';
-    dom.saveStatusIndicator.className = 'save-status saved';
+    await noteManager.saveNote(filePath, content);
+    // Only clear the dirty flag if nothing changed while the write was in flight
+    if (state.activeNotePath === filePath && dom.markdownInput.value === content) {
+      state.isDirty = false;
+      setSaveStatus('Saved', 'saved');
+    }
+    recordNoteSnapshot(filePath, content, forceSnapshot);
+    scheduleGitRefresh();
   } catch (err) {
     console.error('Save error:', err);
-    dom.saveStatusIndicator.textContent = 'Error Saving';
+    setSaveStatus('Save failed', 'error');
   }
 }
 
 function queueAutoSave() {
   state.isDirty = true;
-  dom.saveStatusIndicator.textContent = 'Unsaved';
-  dom.saveStatusIndicator.className = 'save-status saving';
+  setSaveStatus('Unsaved', 'saving');
 
   clearTimeout(state.saveTimeout);
-  state.saveTimeout = setTimeout(() => {
-    saveCurrentNote(false);
-  }, 500);
+  state.saveTimeout = setTimeout(() => saveCurrentNote(false), 500);
 }
 
-async function createNewNote(customTitle = null) {
+// New notes go into the focused folder unless a folder is given
+async function createNewNote(customTitle = null, folder = state.folderScope) {
   try {
-    // Default name is current date-month (DD-MM.md)
-    const title = customTitle || getDefaultNoteName();
-    const created = await noteManager.createNote(state.currentVaultPath, title);
+    const created = await noteManager.createNote(state.currentVaultPath, customTitle || getDefaultNoteName(), folder);
     await refreshVault();
     openNote(created.filePath);
   } catch (err) {
     console.error('Create note failed:', err);
+    alert(`Could not create note: ${err.message}`);
   }
 }
 
-async function deleteNote(filePath, fileName) {
-  if (confirm(`Are you sure you want to delete "${fileName}"?`)) {
-    await noteManager.deleteNote(filePath);
-    if (state.activeNotePath === filePath) {
-      state.activeNotePath = null;
-      dom.markdownInput.value = '';
-      dom.markdownPreview.innerHTML = '';
-      dom.activeNoteBadge.textContent = 'No file open';
-    }
-    await refreshVault();
+function clearEditor() {
+  clearTimeout(state.saveTimeout);
+  state.openToken++;
+  state.activeNotePath = null;
+  state.isDirty = false;
+  dom.markdownInput.value = '';
+  dom.markdownPreview.innerHTML = '';
+  outline?.update('');
+  setActiveNoteUI(null);
+  updateStats();
+}
 
-    const remaining = state.notesTree.filter(item => item.type === 'file' && item.path !== filePath);
-    if (remaining.length > 0) openNote(remaining[0].path);
+async function deleteNote(filePath, name) {
+  if (!confirm(`Delete "${name}"?\n\nThis also removes its revision history.`)) return;
+
+  const wasActive = state.activeNotePath === filePath;
+  if (wasActive) clearTimeout(state.saveTimeout);
+  try {
+    await noteManager.deleteNote(filePath);
+    if (wasActive) clearEditor();
+  } catch (err) {
+    alert(`Could not delete note: ${err.message}`);
+    if (wasActive && state.isDirty) queueAutoSave();
+    return;
+  }
+  await refreshVault();
+
+  // Only move to another note when the one being edited was deleted
+  if (wasActive) {
+    const next = allFiles()[0];
+    if (next) openNote(next.path);
   }
 }
 
 // ==========================================
-// PREVIEW & CHECKLISTS
+// PREVIEW & TAGS
 // ==========================================
 
 function schedulePreviewUpdate() {
   if (state.renderFrame) cancelAnimationFrame(state.renderFrame);
   state.renderFrame = requestAnimationFrame(() => {
+    state.renderFrame = null;
     updatePreviewNow();
   });
 }
 
 function updatePreviewNow() {
-  const raw = dom.markdownInput.value;
-  dom.markdownPreview.innerHTML = renderMarkdown(raw);
-
-  // Checkbox interactivity
-  dom.markdownPreview.querySelectorAll('input[type="checkbox"]').forEach((checkbox, idx) => {
-    checkbox.addEventListener('change', () => {
-      dom.markdownInput.value = toggleTaskCheckbox(dom.markdownInput.value, idx, checkbox.checked);
-      queueAutoSave();
-      schedulePreviewUpdate();
-    });
-  });
-
-  // Wiki links
-  dom.markdownPreview.querySelectorAll('.wiki-link').forEach(link => {
-    link.addEventListener('click', (e) => {
-      e.preventDefault();
-      const targetTitle = link.getAttribute('data-target');
-      const targetFile = state.notesTree.find(f => f.name.replace(/\.md$/, '').toLowerCase() === targetTitle.toLowerCase());
-      if (targetFile) openNote(targetFile.path);
-      else createNewNote(`${targetTitle}.md`);
-    });
-  });
-
-  // Copy buttons on code blocks
-  attachCodeCopyButtons(dom.markdownPreview);
   updateTagsCloud();
+  // Editor-only mode never shows the preview; skip the render work while typing
+  if (uiControls.currentViewMode === 'editor') {
+    outline?.update(dom.markdownInput.value);
+    return;
+  }
+
+  dom.markdownPreview.innerHTML = renderMarkdown(dom.markdownInput.value);
+  enhancePreview(dom.markdownPreview, {
+    getSource: () => dom.markdownInput.value,
+    onSourceChange: (next) => {
+      dom.markdownInput.value = next;
+      queueAutoSave();
+      updateStats();
+      schedulePreviewUpdate();
+    },
+    onWikiLink: (targetTitle) => {
+      const { note, title } = resolveWikiLink(allFiles(), targetTitle);
+      if (note) openNote(note.path);
+      else if (title) createNewNote(title);
+    }
+  });
+  // After the preview so the outline can line up with the rendered headings
+  outline?.update(dom.markdownInput.value);
 }
 
 function updateTagsCloud() {
@@ -320,21 +605,32 @@ function updateTagsCloud() {
   dom.tagCloud.innerHTML = '';
 
   if (tags.length === 0) {
-    dom.tagCloud.innerHTML = '<span style="font-size:10px; color:var(--text-faint);">No tags in note</span>';
+    const empty = document.createElement('span');
+    empty.className = 'tag-empty';
+    empty.textContent = 'No tags in this note';
+    dom.tagCloud.appendChild(empty);
     return;
   }
 
   tags.forEach(tag => {
-    const tagEl = document.createElement('span');
+    const tagEl = document.createElement('button');
+    tagEl.type = 'button';
     tagEl.className = 'tag-pill';
     tagEl.textContent = tag;
-    tagEl.addEventListener('click', () => {
-      dom.noteSearchInput.value = tag;
-      dom.btnClearSearch.style.display = 'block';
-      renderTreeUI();
-    });
+    tagEl.title = `Show notes tagged ${tag}`;
+    tagEl.addEventListener('click', () => setSearch(tag));
     dom.tagCloud.appendChild(tagEl);
   });
+}
+
+let searchTimer = null;
+function setSearch(value, { debounce = false } = {}) {
+  dom.noteSearchInput.value = value;
+  dom.btnClearSearch.hidden = value.length === 0;
+  clearTimeout(searchTimer);
+  // #tag searches read every note in main; wait for typing to pause
+  if (debounce && value.trim().startsWith('#')) searchTimer = setTimeout(renderTreeUI, 250);
+  else renderTreeUI();
 }
 
 function updateStats() {
@@ -346,49 +642,42 @@ function updateStats() {
 }
 
 // ==========================================
-// SMART KEYBOARD & MULTI-WINDOW SYNC
+// MULTI-WINDOW SYNC & SAFE CLOSE
 // ==========================================
-
-function setupSmartKeyboard() {
-  setupSmartEditor(dom.markdownInput, {
-    onChange: () => {
-      queueAutoSave();
-      schedulePreviewUpdate();
-      updateStats();
-    },
-    onSave: () => saveCurrentNote(true)
-  });
-}
 
 function setupCrossWindowSync() {
   window.pinNoteAPI.onFileSavedExternally((filePath, content) => {
-    if (state.activeNotePath === filePath && !state.isDirty) {
-      dom.markdownInput.value = content;
-      updatePreviewNow();
-      updateStats();
-    }
+    // Sticky windows edit notes too; keep their sidebar badge current
+    if (state.activeNotePath !== filePath) applyStatusToTree(filePath, getNoteStatus(content));
+    if (state.activeNotePath !== filePath || state.isDirty || dom.markdownInput.value === content) return;
+    const { selectionStart, selectionEnd, scrollTop } = dom.markdownInput;
+    dom.markdownInput.value = content;
+    dom.markdownInput.setSelectionRange(Math.min(selectionStart, content.length), Math.min(selectionEnd, content.length));
+    dom.markdownInput.scrollTop = scrollTop;
+    updatePreviewNow();
+    updateStats();
+    syncStatusFromEditor();
   });
 
   window.pinNoteAPI.onFileRenamedExternally((oldPath, newPath) => {
     if (state.activeNotePath === oldPath) {
       state.activeNotePath = newPath;
-      dom.activeNoteBadge.textContent = newPath.split(/[/\\]/).pop();
+      localStorage.setItem('pinnote_last_note', newPath);
+      setActiveNoteUI(newPath);
     }
-    refreshVault();
   });
 
   window.pinNoteAPI.onFileDeletedExternally((filePath) => {
-    if (state.activeNotePath === filePath) {
-      state.activeNotePath = null;
-      dom.markdownInput.value = '';
-      dom.markdownPreview.innerHTML = '';
-      dom.activeNoteBadge.textContent = 'No file open';
-    }
-    refreshVault();
+    if (state.activeNotePath === filePath) clearEditor();
   });
 
-  window.pinNoteAPI.onVaultTreeChanged(() => {
-    refreshVault();
+  window.pinNoteAPI.onVaultTreeChanged(() => refreshVault());
+  window.pinNoteAPI.onVaultFilesChanged(() => reloadActiveNoteFromDisk());
+
+  // Flush pending edits before the window closes (close button, Alt+F4, taskbar)
+  window.pinNoteAPI.onBeforeClose(async () => {
+    if (state.isDirty) await saveCurrentNote(true);
+    window.pinNoteAPI.readyToClose();
   });
 }
 
@@ -396,132 +685,137 @@ function setupCrossWindowSync() {
 // EVENT LISTENERS & SHORTCUTS
 // ==========================================
 
+function setupBadgeRename() {
+  dom.activeNoteBadge.addEventListener('click', () => {
+    if (!state.activeNotePath) return;
+    // Edit the bare title; the badge shows the full file name again afterwards
+    dom.activeNoteBadge.textContent = noteTitle(fileName(state.activeNotePath));
+    noteManager.inlineRename(state.activeNotePath, dom.activeNoteBadge, handleRenamed, {
+      inputClass: 'inline-rename-badge-input',
+      onDone: () => setActiveNoteUI(state.activeNotePath)
+    });
+  });
+
+  dom.activeNoteBadge.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'F2') dom.activeNoteBadge.click();
+  });
+}
+
+function popOutActiveNote() {
+  if (state.activeNotePath) window.pinNoteAPI.openDetachedNoteWindow(state.activeNotePath);
+}
+
+async function openHistory() {
+  if (!state.activeNotePath) return;
+  if (state.isDirty) await saveCurrentNote(true);
+  historyModal.open(state.activeNotePath, dom.markdownInput.value);
+}
+
 function setupEventListeners() {
   // Vault Folder Picker
   dom.btnChangeVault.addEventListener('click', async () => {
     const chosen = await window.pinNoteAPI.selectVaultFolder();
-    if (chosen) {
-      state.currentVaultPath = chosen;
-      localStorage.setItem('pinnote_vault_path', chosen);
-      await refreshVault();
-      const first = state.notesTree.find(item => item.type === 'file');
-      if (first) openNote(first.path);
-    }
+    if (!chosen) return;
+    if (state.isDirty) await saveCurrentNote(true);
+    state.currentVaultPath = chosen;
+    clearEditor();
+    await refreshVault();
+    const first = allFiles()[0];
+    if (first) openNote(first.path);
   });
 
   dom.btnRefreshVault.addEventListener('click', () => refreshVault());
   dom.btnNewNote.addEventListener('click', () => createNewNote());
+  dom.btnNewFolder.addEventListener('click', () => createFolder());
+  noteManager.enableNoteDrops(dom.noteTree, {
+    getRootPath: () => state.folderScope || state.currentVaultPath,
+    onMoveNote: (filePath, targetDir) => moveNote(filePath, targetDir)
+  });
 
   // Search Filter in Sidebar
-  dom.noteSearchInput.addEventListener('input', (e) => {
-    const hasVal = e.target.value.length > 0;
-    dom.btnClearSearch.style.display = hasVal ? 'block' : 'none';
-    renderTreeUI();
+  dom.noteSearchInput.addEventListener('input', (e) => setSearch(e.target.value, { debounce: true }));
+  dom.noteSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && dom.noteSearchInput.value) {
+      e.preventDefault();
+      setSearch('');
+    }
   });
-
   dom.btnClearSearch.addEventListener('click', () => {
-    dom.noteSearchInput.value = '';
-    dom.btnClearSearch.style.display = 'none';
-    renderTreeUI();
+    setSearch('');
+    dom.noteSearchInput.focus();
   });
 
-  // Pop Out Sticky Window
-  dom.btnPopoutNote.addEventListener('click', () => {
-    if (state.activeNotePath) {
-      window.pinNoteAPI.openDetachedNoteWindow(state.activeNotePath);
-    }
-  });
+  dom.btnPopoutNote.addEventListener('click', popOutActiveNote);
+  dom.btnNoteHistory.addEventListener('click', openHistory);
+  dom.btnToggleSidebar.addEventListener('click', toggleSidebar);
+  setupBadgeRename();
 
-  // Note Revision History Button
-  dom.btnNoteHistory.addEventListener('click', () => {
-    if (state.activeNotePath) {
-      historyModal.open(state.activeNotePath, dom.markdownInput.value);
-    }
-  });
-
-  // Toggle Sidebar
-  dom.btnToggleSidebar.addEventListener('click', () => {
-    dom.sidebar.classList.toggle('collapsed');
-  });
-
-  // Editor Input Typing
+  // Editor Input Typing (smart-editor edits also arrive here as 'input' events)
   dom.markdownInput.addEventListener('input', () => {
     queueAutoSave();
     schedulePreviewUpdate();
     updateStats();
+    syncStatusFromEditor();
   });
+
+  // Note status picker & sidebar status filter
+  dom.noteStatus.addEventListener('change', () => setActiveStatus(dom.noteStatus.value));
+  dom.statusChips.forEach(chip => chip.addEventListener('click', () => setStatusFilter(chip.dataset.filter)));
+  renderStatusChips();
+  dom.btnClearScope.addEventListener('click', () => setFolderScope(null));
 
   // Formatting Toolbar Buttons
   document.querySelectorAll('.fmt-btn[data-fmt]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const fmt = btn.getAttribute('data-fmt');
-      if (fmt) {
-        insertFormat(dom.markdownInput, fmt, () => {
-          queueAutoSave();
-          schedulePreviewUpdate();
-          updateStats();
-        });
-      }
-    });
+    btn.addEventListener('click', () => insertFormat(dom.markdownInput, btn.getAttribute('data-fmt')));
   });
 
-  // Quick Switcher Trigger
-  dom.btnQuickSwitcher.addEventListener('click', () => {
-    quickSwitcher.open(state.notesTree);
-  });
+  dom.btnQuickSwitcher.addEventListener('click', () => quickSwitcher.open(state.notesTree));
 
-  // Global Keyboard Shortcuts
-  window.addEventListener('keydown', (e) => {
-    // Ctrl + P -> Pop out note to sticky
-    if (e.ctrlKey && e.key.toLowerCase() === 'p' && !e.shiftKey) {
-      e.preventDefault();
-      if (state.activeNotePath) {
-        window.pinNoteAPI.openDetachedNoteWindow(state.activeNotePath);
-      }
-    }
-    // Ctrl + K -> Quick Switcher
-    else if (e.ctrlKey && e.key.toLowerCase() === 'k') {
-      e.preventDefault();
-      quickSwitcher.open(state.notesTree);
-    }
-    // Ctrl + H -> Note History
-    else if (e.ctrlKey && e.key.toLowerCase() === 'h') {
-      e.preventDefault();
-      if (state.activeNotePath) {
-        historyModal.open(state.activeNotePath, dom.markdownInput.value);
-      }
-    }
-    // Ctrl + N -> New Note (default date-month name)
-    else if (e.ctrlKey && e.key.toLowerCase() === 'n') {
-      e.preventDefault();
-      createNewNote();
-    }
-    // Ctrl + S -> Force Save with snapshot
-    else if (e.ctrlKey && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      saveCurrentNote(true);
-    }
-    // Ctrl + \ -> Toggle Sidebar
-    else if (e.ctrlKey && e.key === '\\') {
-      e.preventDefault();
-      dom.sidebar.classList.toggle('collapsed');
-    }
-    // Ctrl + = / Ctrl + + -> Zoom In
-    else if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
-      e.preventDefault();
-      uiControls.setFontSize(uiControls.currentFontSize + 2);
-    }
-    // Ctrl + - -> Zoom Out
-    else if (e.ctrlKey && e.key === '-') {
-      e.preventDefault();
-      uiControls.setFontSize(uiControls.currentFontSize - 2);
-    }
-    // Ctrl + 0 -> Reset Font Size to 20px
-    else if (e.ctrlKey && e.key === '0') {
-      e.preventDefault();
-      uiControls.setFontSize(20);
-    }
-  });
+  window.addEventListener('keydown', handleGlobalShortcut);
+}
+
+function toggleSidebar() {
+  const collapsed = dom.sidebar.classList.toggle('collapsed');
+  dom.btnToggleSidebar.setAttribute('aria-pressed', String(!collapsed));
+}
+
+function handleGlobalShortcut(e) {
+  // The smart editor already handled this key (e.g. Ctrl+S inside the textarea)
+  if (e.defaultPrevented || !e.ctrlKey || e.altKey) return;
+  const key = e.key.toLowerCase();
+
+  // Ctrl + Shift + = / - / 0 -> Interface scale
+  if (e.shiftKey) {
+    if (e.code === 'Equal' || e.code === 'NumpadAdd') { e.preventDefault(); uiControls.stepUiScale(1); }
+    else if (e.code === 'Minus' || e.code === 'NumpadSubtract') { e.preventDefault(); uiControls.stepUiScale(-1); }
+    else if (e.code === 'Digit0' || e.code === 'Numpad0') { e.preventDefault(); uiControls.resetUiScale(); }
+    else if (e.code === 'KeyG') { e.preventDefault(); gitPanel.open(); }
+    else if (e.code === 'KeyO') { e.preventDefault(); outline.toggle(); }
+    return;
+  }
+
+  const actions = {
+    p: popOutActiveNote,
+    k: () => quickSwitcher.open(state.notesTree),
+    h: openHistory,
+    n: () => createNewNote(),
+    s: () => saveCurrentNote(true),
+    '\\': toggleSidebar
+  };
+
+  if (actions[key]) {
+    e.preventDefault();
+    actions[key]();
+  } else if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+    e.preventDefault();
+    uiControls.zoomEditor(1);
+  } else if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+    e.preventDefault();
+    uiControls.zoomEditor(-1);
+  } else if (e.code === 'Digit0' || e.code === 'Numpad0') {
+    e.preventDefault();
+    uiControls.resetEditorZoom();
+  }
 }
 
 // Run App

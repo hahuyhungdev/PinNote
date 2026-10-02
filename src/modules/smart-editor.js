@@ -19,9 +19,98 @@ const WRAP_PAIRS = {
 };
 
 /**
+ * Replace a range of the textarea through the browser's editing pipeline so the change
+ * lands on the native undo stack (Ctrl+Z / Ctrl+Y) and fires a regular 'input' event.
+ */
+function replaceRange(textarea, text, start, end) {
+  if (text === '' && start === end) return;
+  textarea.focus();
+  textarea.setSelectionRange(start, end);
+  const ok = text === ''
+    ? document.execCommand('delete')
+    : document.execCommand('insertText', false, text);
+  if (!ok) {
+    textarea.setRangeText(text, start, end, 'end');
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+}
+
+// Formats that apply to whole lines rather than to the cursor position
+const LINE_PREFIXES = {
+  h1: '# ',
+  h2: '## ',
+  h3: '### ',
+  task: '- [ ] ',
+  list: '- ',
+  quote: '> '
+};
+
+const LINE_PLACEHOLDERS = {
+  h1: 'Heading 1',
+  h2: 'Heading 2',
+  h3: 'Heading 3',
+  task: 'New task',
+  list: 'List item',
+  quote: 'Blockquote'
+};
+
+// lastIndexOf clamps a negative fromIndex to 0, which misreads a leading "\n" at position 0
+const lineStartOf = (value, pos) => (pos === 0 ? 0 : value.lastIndexOf('\n', pos - 1) + 1);
+
+// Closers that may be typed over when the cursor sits right before them
+const OVERTYPE_CLOSERS = new Set([')', ']', '}', '"', '`']);
+
+/**
+ * Prefix every line touched by the selection (headings replace an existing heading level).
+ * An empty line gets a selected placeholder instead.
+ */
+function applyLinePrefix(textarea, fmtType) {
+  const { value, selectionStart: start } = textarea;
+  // A selection ending right after a newline does not include the next line
+  const end = textarea.selectionEnd > start && value[textarea.selectionEnd - 1] === '\n'
+    ? textarea.selectionEnd - 1
+    : textarea.selectionEnd;
+  const prefix = LINE_PREFIXES[fmtType];
+  const lineStart = lineStartOf(value, start);
+  let lineEnd = value.indexOf('\n', end);
+  if (lineEnd === -1) lineEnd = value.length;
+
+  const lines = value.substring(lineStart, lineEnd).split('\n');
+
+  if (lines.length === 1 && lines[0].trim() === '') {
+    const placeholder = LINE_PLACEHOLDERS[fmtType];
+    replaceRange(textarea, `${prefix}${placeholder}`, lineStart, lineEnd);
+    textarea.setSelectionRange(lineStart + prefix.length, lineStart + prefix.length + placeholder.length);
+    return;
+  }
+
+  const isHeading = fmtType.startsWith('h');
+  const prefixed = lines.map(line => {
+    if (lines.length > 1 && line.trim() === '') return line;
+    const indent = line.match(/^\s*/)[0];
+    const body = line.slice(indent.length);
+    return indent + prefix + (isHeading ? body.replace(/^#{1,6}\s+/, '') : body);
+  }).join('\n');
+
+  replaceRange(textarea, prefixed, lineStart, lineEnd);
+  if (lines.length === 1) {
+    const cursor = Math.max(lineStart, start + prefixed.length - lines[0].length);
+    textarea.setSelectionRange(cursor, cursor);
+  } else {
+    textarea.setSelectionRange(lineStart, lineStart + prefixed.length);
+  }
+}
+
+/**
  * Insert a Markdown formatting helper at cursor or around selection
  */
-function insertFormat(textarea, fmtType, onUpdate) {
+function insertFormat(textarea, fmtType) {
+  if (LINE_PREFIXES[fmtType]) {
+    applyLinePrefix(textarea, fmtType);
+    textarea.focus();
+    return;
+  }
+
   const start = textarea.selectionStart;
   const end = textarea.selectionEnd;
   const selectedText = textarea.value.substring(start, end);
@@ -63,36 +152,6 @@ function insertFormat(textarea, fmtType, onUpdate) {
         cursorEnd = cursorStart;
       }
       break;
-    case 'h1':
-      replacement = `# ${selectedText || 'Heading 1'}`;
-      cursorStart = start + replacement.length;
-      cursorEnd = cursorStart;
-      break;
-    case 'h2':
-      replacement = `## ${selectedText || 'Heading 2'}`;
-      cursorStart = start + replacement.length;
-      cursorEnd = cursorStart;
-      break;
-    case 'h3':
-      replacement = `### ${selectedText || 'Heading 3'}`;
-      cursorStart = start + replacement.length;
-      cursorEnd = cursorStart;
-      break;
-    case 'task':
-      replacement = `- [ ] ${selectedText || 'New task'}`;
-      cursorStart = start + replacement.length;
-      cursorEnd = cursorStart;
-      break;
-    case 'list':
-      replacement = `- ${selectedText || 'List item'}`;
-      cursorStart = start + replacement.length;
-      cursorEnd = cursorStart;
-      break;
-    case 'quote':
-      replacement = `> ${selectedText || 'Blockquote'}`;
-      cursorStart = start + replacement.length;
-      cursorEnd = cursorStart;
-      break;
     case 'code':
       if (selectedText.includes('\n')) {
         replacement = `\`\`\`js\n${selectedText}\n\`\`\``;
@@ -104,7 +163,8 @@ function insertFormat(textarea, fmtType, onUpdate) {
         cursorEnd = cursorStart;
       } else {
         replacement = `\`\`\`js\n// code snippet\n\`\`\``;
-        cursorStart = start + 8;
+        // Select the placeholder line "// code snippet"
+        cursorStart = start + 6;
         cursorEnd = cursorStart + 15;
       }
       break;
@@ -133,23 +193,38 @@ function insertFormat(textarea, fmtType, onUpdate) {
       return;
   }
 
-  textarea.setRangeText(replacement, start, end, 'end');
+  replaceRange(textarea, replacement, start, end);
   textarea.setSelectionRange(cursorStart, cursorEnd);
-  if (typeof onUpdate === 'function') onUpdate();
   textarea.focus();
 }
 
 /**
  * Attach smart Markdown keyboard listeners to a textarea
  */
-function setupSmartEditor(textarea, { onChange, onSave }) {
+function setupSmartEditor(textarea, { onSave } = {}) {
   if (!textarea) return;
 
   textarea.addEventListener('keydown', (e) => {
+    // Leave keys alone while an IME (e.g. Vietnamese Telex) is composing
+    if (e.isComposing || e.keyCode === 229) return;
+
     // 1. SELECTION WRAPPING & AUTO-CLOSING PAIRS
     if (!e.ctrlKey && !e.altKey) {
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
+      const next = textarea.value[start];
+      const prev = textarea.value[start - 1];
+
+      // Type over a closer instead of doubling it. A quote or backtick only counts as a closer
+      // after text ("hi|" not |"abc"), and an empty `|` pair keeps auto-closing so typing
+      // three backticks still builds a ``` fence.
+      const symmetric = e.key === '"' || e.key === '`';
+      const isCloser = !symmetric || (prev !== undefined && !/\s/.test(prev) && !(e.key === '`' && prev === '`'));
+      if (start === end && OVERTYPE_CLOSERS.has(e.key) && next === e.key && isCloser) {
+        e.preventDefault();
+        textarea.setSelectionRange(start + 1, start + 1);
+        return;
+      }
 
       // Wrap selection if text is selected (including single quotes: 'selection')
       if (start !== end && WRAP_PAIRS[e.key]) {
@@ -157,9 +232,8 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
         const closing = WRAP_PAIRS[e.key];
         const selected = textarea.value.substring(start, end);
         const wrapped = `${e.key}${selected}${closing}`;
-        textarea.setRangeText(wrapped, start, end, 'end');
+        replaceRange(textarea, wrapped, start, end);
         textarea.setSelectionRange(start + 1, end + 1);
-        if (onChange) onChange();
         return;
       }
 
@@ -167,9 +241,8 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
       if (start === end && AUTO_CLOSE_PAIRS[e.key]) {
         e.preventDefault();
         const closing = AUTO_CLOSE_PAIRS[e.key];
-        textarea.setRangeText(`${e.key}${closing}`, start, end, 'end');
+        replaceRange(textarea, `${e.key}${closing}`, start, end);
         textarea.setSelectionRange(start + 1, start + 1);
-        if (onChange) onChange();
         return;
       }
     }
@@ -181,9 +254,8 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
       const next = textarea.value[pos];
       if (prev && AUTO_CLOSE_PAIRS[prev] === next) {
         e.preventDefault();
-        textarea.setRangeText('', pos - 1, pos + 1, 'end');
+        replaceRange(textarea, '', pos - 1, pos + 1);
         textarea.setSelectionRange(pos - 1, pos - 1);
-        if (onChange) onChange();
         return;
       }
     }
@@ -196,7 +268,7 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
       const end = textarea.selectionEnd;
       const value = textarea.value;
 
-      const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+      const lineStart = lineStartOf(value, start);
       let lineEnd = value.indexOf('\n', end);
       if (lineEnd === -1) lineEnd = value.length;
 
@@ -212,7 +284,7 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
             if (line.startsWith('\t') || line.startsWith(' ')) return line.slice(1);
             return line;
           }).join('\n');
-          textarea.setRangeText(unindented, lineStart, lineEnd, 'end');
+          replaceRange(textarea, unindented, lineStart, lineEnd);
           textarea.setSelectionRange(lineStart, lineStart + unindented.length);
         } else {
           const currentLine = linesArr[0];
@@ -226,22 +298,20 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
             unindented = currentLine.slice(1);
           }
           if (removed > 0) {
-            textarea.setRangeText(unindented, lineStart, lineEnd, 'end');
+            replaceRange(textarea, unindented, lineStart, lineEnd);
             const newStart = Math.max(lineStart, start - removed);
             const newEnd = Math.max(lineStart, end - removed);
             textarea.setSelectionRange(newStart, newEnd);
           }
         }
-        if (onChange) onChange();
         return;
       }
 
       // Tab key
       if (isMultiLine) {
         const indented = linesArr.map(line => '  ' + line).join('\n');
-        textarea.setRangeText(indented, lineStart, lineEnd, 'end');
+        replaceRange(textarea, indented, lineStart, lineEnd);
         textarea.setSelectionRange(lineStart, lineStart + indented.length);
-        if (onChange) onChange();
         return;
       }
 
@@ -265,7 +335,6 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
 
         if (matched) {
           textarea.setSelectionRange(start + matched.length, start + matched.length);
-          if (onChange) onChange();
           return;
         }
       }
@@ -277,26 +346,26 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
 
       if (isListLine || isAtLineStart) {
         const indented = '  ' + currentLine;
-        textarea.setRangeText(indented, lineStart, lineEnd, 'end');
+        replaceRange(textarea, indented, lineStart, lineEnd);
         if (start === end) {
           textarea.setSelectionRange(start + 2, start + 2);
         } else {
           textarea.setSelectionRange(start + 2, end + 2);
         }
       } else {
-        textarea.setRangeText('  ', start, end, 'end');
+        replaceRange(textarea, '  ', start, end);
         textarea.setSelectionRange(start + 2, start + 2);
       }
 
-      if (onChange) onChange();
       return;
     }
 
     // 3. ENTER (Smart List & Task Continuation)
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
       const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
       const value = textarea.value;
-      const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+      const lineStart = lineStartOf(value, start);
       const currentLine = value.substring(lineStart, start);
 
       // Task List: "- [ ] " or "- [x] "
@@ -306,12 +375,12 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
         const indent = taskMatch[1];
         const content = taskMatch[3].trim();
 
-        if (content === '') {
-          textarea.setRangeText('', lineStart, start, 'end');
+        // A selection counts as content, so Enter over it continues the list instead of exiting
+        if (content === '' && start === end) {
+          replaceRange(textarea, '', lineStart, end);
         } else {
-          textarea.setRangeText(`\n${indent}- [ ] `, start, start, 'end');
+          replaceRange(textarea, `\n${indent}- [ ] `, start, end);
         }
-        if (onChange) onChange();
         return;
       }
 
@@ -323,12 +392,11 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
         const bullet = bulletMatch[2];
         const content = bulletMatch[3].trim();
 
-        if (content === '') {
-          textarea.setRangeText('', lineStart, start, 'end');
+        if (content === '' && start === end) {
+          replaceRange(textarea, '', lineStart, end);
         } else {
-          textarea.setRangeText(`\n${indent}${bullet} `, start, start, 'end');
+          replaceRange(textarea, `\n${indent}${bullet} `, start, end);
         }
-        if (onChange) onChange();
         return;
       }
 
@@ -340,12 +408,11 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
         const num = parseInt(numberMatch[2], 10);
         const content = numberMatch[3].trim();
 
-        if (content === '') {
-          textarea.setRangeText('', lineStart, start, 'end');
+        if (content === '' && start === end) {
+          replaceRange(textarea, '', lineStart, end);
         } else {
-          textarea.setRangeText(`\n${indent}${num + 1}. `, start, start, 'end');
+          replaceRange(textarea, `\n${indent}${num + 1}. `, start, end);
         }
-        if (onChange) onChange();
         return;
       }
     }
@@ -354,10 +421,10 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
     if (e.ctrlKey) {
       if (e.key.toLowerCase() === 'b') {
         e.preventDefault();
-        insertFormat(textarea, 'bold', onChange);
+        insertFormat(textarea, 'bold');
       } else if (e.key.toLowerCase() === 'i') {
         e.preventDefault();
-        insertFormat(textarea, 'italic', onChange);
+        insertFormat(textarea, 'italic');
       } else if (e.key.toLowerCase() === 's') {
         e.preventDefault();
         if (onSave) onSave();
@@ -366,7 +433,7 @@ function setupSmartEditor(textarea, { onChange, onSave }) {
   });
 }
 
-module.exports = {
+export {
   setupSmartEditor,
   insertFormat
 };
