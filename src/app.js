@@ -19,7 +19,8 @@ const state = {
   isDirty: false,
   saveTimeout: null,
   renderFrame: null,
-  tagSearchToken: 0
+  tagSearchToken: 0,
+  openToken: 0
 };
 
 const $ = (id) => document.getElementById(id);
@@ -214,12 +215,18 @@ function setActiveNoteUI(filePath) {
 }
 
 async function openNote(filePath) {
-  if (state.activeNotePath && state.activeNotePath !== filePath && state.isDirty) {
+  // Already open: re-reading from disk would discard typing that has not been saved yet
+  if (filePath === state.activeNotePath) return;
+  const token = ++state.openToken;
+
+  if (state.activeNotePath && state.isDirty) {
     await saveCurrentNote(true);
   }
 
   try {
     const content = await noteManager.readNote(filePath);
+    // A later click won the race; do not let this older read overwrite it
+    if (token !== state.openToken) return;
     clearTimeout(state.saveTimeout);
     state.activeNotePath = filePath;
     state.isDirty = false;
