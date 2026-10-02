@@ -15,6 +15,7 @@ Notes are plain `.md` files in a folder you choose, so they stay readable in any
   - Enter continues lists, task lists and numbered lists. `Tab` / `Shift + Tab` indent and unindent one or many lines, and `Tab` also steps out of closing markers (`**bold|**` → `**bold**|`).
   - Toolbar and shortcuts for bold, italic, strikethrough, headings, lists, tasks, quotes, code, tables, callouts and math. Heading, list, task and quote buttons apply to the current line, or to every selected line.
   - Input-method friendly: smart keys stay out of the way while an IME (e.g. Vietnamese Telex) is composing.
+- **English spell check** in the editor and sticky notes. Misspelled words are underlined. Right-click one for suggestions or *Add to dictionary*. The right-click menu also has Cut, Copy, Paste and Select all, and a **Check spelling** toggle that PinNote remembers.
 - **Rich preview**
   - Obsidian-style callouts (`> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!CAUTION]`, `> [!IMPORTANT]`).
   - KaTeX math (`$$ E = mc^2 $$` and inline `$x^2$`; prices like "$5 and $10" stay plain text).
@@ -148,6 +149,7 @@ npm run test:e2e  # end-to-end tests against the real app
   - checkbox indexing, tags, headings, front-matter status, wiki-link resolution
   - folder filtering, note-name and path safety
   - the commit guard rules
+  - the editor's right-click menu (spelling suggestions, edit actions, spelling toggle)
   - the Git service, run against real temporary repositories and a local "remote". Git must be installed.
 - **End-to-end tests** launch the real Electron app with `playwright-core`, using a throw-away profile (`--user-data-dir`) and a temporary vault, so your own settings and notes are never touched. They cover:
   - the editor, notes and wiki links
@@ -155,6 +157,7 @@ npm run test:e2e  # end-to-end tests against the real app
   - status, folders and filters, and folder actions (including drag and drop)
   - the outline, the sidebar and toolbar layout
   - the Git panel and commit guard
+  - spell checking: fixing a word from the right-click menu, and keeping the toggle across sticky windows and restarts
   - protection against hostile vaults
 
   Run them from Windows (`cmd` or PowerShell), because the Electron binary in `node_modules` is platform-specific.
@@ -178,7 +181,8 @@ PinNote/
 │   │   ├── markdown.js       # Marked + KaTeX + highlight.js + callouts, sanitized by DOMPurify
 │   │   ├── text-utils.js     # Tasks, tags, headings, front-matter status, wiki links, path safety
 │   │   ├── git-service.js    # Git commands for the vault (hardened against hostile repos)
-│   │   └── commit-guard.js   # Sensitive-content rules and diff scanning
+│   │   ├── commit-guard.js   # Sensitive-content rules and diff scanning
+│   │   └── spell-menu.js     # Editor right-click menu: spelling fixes and edit actions
 │   └── modules/              # Renderer ES modules (no Node access)
 │       ├── smart-editor.js   # Smart typing, list continuation, indentation, formatting
 │       ├── preview.js        # Bridge wrappers, checkbox/wiki-link wiring, copy buttons

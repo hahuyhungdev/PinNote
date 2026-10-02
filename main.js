@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { extractTags, flattenNoteFiles, sanitizeNoteName, isPathInside, getNoteStatus } = require('./src/lib/text-utils');
 const { createGitService } = require('./src/lib/git-service');
 const { DEFAULT_GUARD_RULES, parseRules } = require('./src/lib/commit-guard');
+const { buildEditorMenu, toMenuTemplate } = require('./src/lib/spell-menu');
 
 function logDebug(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
@@ -92,6 +93,10 @@ function hardenWindow(win) {
     openExternalSafe(url);
   });
 
+  win.webContents.on('context-menu', (event, params) => showEditorMenu(win, params));
+  // Chromium re-enables spell checking while the first page starts up; re-apply the saved choice
+  win.webContents.on('did-finish-load', applySpellcheckEnabled);
+
   win.on('maximize', () => win.webContents.send('window-maximized-state', true));
   win.on('unmaximize', () => win.webContents.send('window-maximized-state', false));
 
@@ -102,6 +107,49 @@ function hardenWindow(win) {
     win.webContents.send('app-before-close');
     setTimeout(() => closeWithoutFlush(win), 2000);
   });
+}
+
+// ==========================================
+// SPELL CHECKING
+// ==========================================
+
+const SPELLCHECK_LANGUAGES = ['en-US'];
+
+const spellcheckSetting = () => readSettings().spellcheck !== false;
+
+function applySpellcheckEnabled() {
+  session.defaultSession.setSpellCheckerEnabled(spellcheckSetting());
+}
+
+// Languages first, then the saved on/off state, so the language change cannot override it
+function applySpellcheckSettings() {
+  try {
+    session.defaultSession.setSpellCheckerLanguages(SPELLCHECK_LANGUAGES);
+  } catch (e) {
+    logDebug(`Spellchecker languages failed: ${e}`);
+  }
+  applySpellcheckEnabled();
+}
+
+function showEditorMenu(win, params) {
+  const ses = win.webContents.session;
+  const items = buildEditorMenu(params, { spellcheckEnabled: ses.isSpellCheckerEnabled() });
+  if (!items.length) return;
+
+  const handlers = {
+    replace: (word) => win.webContents.replaceMisspelling(word),
+    learn: (word) => ses.addWordToSpellCheckerDictionary(word),
+    'toggle-spellcheck': () => {
+      const enabled = !ses.isSpellCheckerEnabled();
+      ses.setSpellCheckerEnabled(enabled);
+      writeSettings({ spellcheck: enabled });
+    }
+  };
+  const template = toMenuTemplate(items, (action, word) => {
+    if (!win.isDestroyed()) handlers[action](word);
+  });
+  // Open at the click (or the caret, for the keyboard menu key) rather than wherever the mouse is
+  Menu.buildFromTemplate(template).popup({ window: win, x: params.x, y: params.y });
 }
 
 function closeWithoutFlush(win) {
@@ -149,6 +197,7 @@ function createMainWindow() {
 }
 
 app.whenReady().then(() => {
+  applySpellcheckSettings();
   createMainWindow();
 
   app.on('activate', () => {
