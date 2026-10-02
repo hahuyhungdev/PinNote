@@ -12,7 +12,7 @@ export const toggleTaskCheckbox = (text, index, checked) => md().toggleTaskCheck
 export const extractTags = (text) => md().extractTags(text);
 export const flattenNoteFiles = (items) => md().flattenNoteFiles(items);
 export const noteTitle = (name) => md().noteTitle(name);
-export const findNoteByTitle = (files, target) => md().findNoteByTitle(files, target);
+export const resolveWikiLink = (files, link) => md().resolveWikiLink(files, link);
 
 /**
  * Attach copy buttons to all <pre> code blocks in a rendered container

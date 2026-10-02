@@ -54,6 +54,9 @@ const LINE_PLACEHOLDERS = {
   quote: 'Blockquote'
 };
 
+// lastIndexOf clamps a negative fromIndex to 0, which misreads a leading "\n" at position 0
+const lineStartOf = (value, pos) => (pos === 0 ? 0 : value.lastIndexOf('\n', pos - 1) + 1);
+
 // Closers that may be typed over when the cursor sits right before them
 const OVERTYPE_CLOSERS = new Set([')', ']', '}', '"', '`']);
 
@@ -68,7 +71,7 @@ function applyLinePrefix(textarea, fmtType) {
     ? textarea.selectionEnd - 1
     : textarea.selectionEnd;
   const prefix = LINE_PREFIXES[fmtType];
-  const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+  const lineStart = lineStartOf(value, start);
   let lineEnd = value.indexOf('\n', end);
   if (lineEnd === -1) lineEnd = value.length;
 
@@ -212,9 +215,12 @@ function setupSmartEditor(textarea, { onSave } = {}) {
       const next = textarea.value[start];
       const prev = textarea.value[start - 1];
 
-      // Type over a closer instead of doubling it. An empty `|` pair keeps auto-closing
-      // so typing three backticks still builds a ``` fence.
-      if (start === end && OVERTYPE_CLOSERS.has(e.key) && next === e.key && !(e.key === '`' && prev === '`')) {
+      // Type over a closer instead of doubling it. A quote or backtick only counts as a closer
+      // after text ("hi|" not |"abc"), and an empty `|` pair keeps auto-closing so typing
+      // three backticks still builds a ``` fence.
+      const symmetric = e.key === '"' || e.key === '`';
+      const isCloser = !symmetric || (prev !== undefined && !/\s/.test(prev) && !(e.key === '`' && prev === '`'));
+      if (start === end && OVERTYPE_CLOSERS.has(e.key) && next === e.key && isCloser) {
         e.preventDefault();
         textarea.setSelectionRange(start + 1, start + 1);
         return;
@@ -262,7 +268,7 @@ function setupSmartEditor(textarea, { onSave } = {}) {
       const end = textarea.selectionEnd;
       const value = textarea.value;
 
-      const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+      const lineStart = lineStartOf(value, start);
       let lineEnd = value.indexOf('\n', end);
       if (lineEnd === -1) lineEnd = value.length;
 
@@ -359,7 +365,7 @@ function setupSmartEditor(textarea, { onSave } = {}) {
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
       const value = textarea.value;
-      const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+      const lineStart = lineStartOf(value, start);
       const currentLine = value.substring(lineStart, start);
 
       // Task List: "- [ ] " or "- [x] "
@@ -369,7 +375,8 @@ function setupSmartEditor(textarea, { onSave } = {}) {
         const indent = taskMatch[1];
         const content = taskMatch[3].trim();
 
-        if (content === '') {
+        // A selection counts as content, so Enter over it continues the list instead of exiting
+        if (content === '' && start === end) {
           replaceRange(textarea, '', lineStart, end);
         } else {
           replaceRange(textarea, `\n${indent}- [ ] `, start, end);
@@ -385,7 +392,7 @@ function setupSmartEditor(textarea, { onSave } = {}) {
         const bullet = bulletMatch[2];
         const content = bulletMatch[3].trim();
 
-        if (content === '') {
+        if (content === '' && start === end) {
           replaceRange(textarea, '', lineStart, end);
         } else {
           replaceRange(textarea, `\n${indent}${bullet} `, start, end);
@@ -401,7 +408,7 @@ function setupSmartEditor(textarea, { onSave } = {}) {
         const num = parseInt(numberMatch[2], 10);
         const content = numberMatch[3].trim();
 
-        if (content === '') {
+        if (content === '' && start === end) {
           replaceRange(textarea, '', lineStart, end);
         } else {
           replaceRange(textarea, `\n${indent}${num + 1}. `, start, end);

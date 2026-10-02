@@ -79,6 +79,24 @@ test('Enter on a list line replaces the selected text', async () => {
   assert.equal(await value(), '- apple\n- ');
 });
 
+test('Heading button on a leading empty line with the cursor at 0', async () => {
+  await setEditor(win, '\nbody', 0);
+  await win.click('.fmt-btn[data-fmt="h1"]');
+  assert.equal(await value(), '# Heading 1\nbody');
+});
+
+test('typing a quote before an opening quote inserts a pair instead of skipping it', async () => {
+  await setEditor(win, '"abc"', 0);
+  await win.keyboard.type('"');
+  assert.equal(await value(), '"""abc"');
+});
+
+test('Enter with the item text selected keeps the bullet and continues the list', async () => {
+  await setEditor(win, '- foo bar', 2, 9);
+  await win.keyboard.press('Enter');
+  assert.equal(await value(), '- \n- ');
+});
+
 test('no renderer errors were thrown', () => {
   assert.deepEqual(pageErrors, []);
 });

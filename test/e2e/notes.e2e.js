@@ -68,11 +68,20 @@ test('[[Target|alias]] shows the alias and links to Target', async () => {
   await typeAndSave('see [[Gamma|the alias]] and [[Alpha#Heading]]');
   const links = win.locator('#markdown-preview .wiki-link');
   assert.equal(await links.nth(0).textContent(), 'the alias');
-  assert.equal(await links.nth(1).getAttribute('data-target'), 'Alpha');
 
   await links.nth(0).click();
   await win.waitForSelector('#active-note-badge:text-is("Gamma.md")');
   assert.ok(sandbox.exists('Gamma.md'));
+
+  // [[Alpha#Heading]] goes to Alpha; a same-note [[#Local]] anchor creates nothing
+  await openNote('Gamma');
+  await typeAndSave('[[Alpha#Heading]] [[#Local]]');
+  await win.locator('#markdown-preview .wiki-link').nth(0).click();
+  await win.waitForSelector('#active-note-badge:text-is("Alpha.md")');
+  await openNote('Gamma');
+  await win.locator('#markdown-preview .wiki-link').nth(1).click();
+  await new Promise(r => setTimeout(r, 500));
+  assert.deepEqual(sandbox.list(), ['Alpha.md', 'Beta.md', 'Gamma.md', 'What.md']);
 });
 
 test('the save status stays visible at the default window size', async () => {

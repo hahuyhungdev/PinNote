@@ -69,9 +69,10 @@ const wikiLink = {
     const match = /^\[\[([^\]\n]+)\]\]/.exec(src);
     if (!match) return;
     // Obsidian syntax: [[Note]], [[Note|shown text]], [[Note#Heading]]
+    // The full link is kept as the target: "#" may be a heading or part of a title like "Meeting #3"
     const [link, alias] = match[1].split('|');
-    const target = link.split('#')[0].trim() || link.trim();
-    const label = alias?.trim() || link.trim();
+    const target = link.trim();
+    const label = alias?.trim() || target;
     return { type: 'wikiLink', raw: match[0], target, label };
   },
   renderer: (token) =>

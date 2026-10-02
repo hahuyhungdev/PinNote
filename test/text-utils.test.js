@@ -9,7 +9,8 @@ const {
   noteTitle,
   sanitizeNoteName,
   isPathInside,
-  findNoteByTitle
+  findNoteByTitle,
+  resolveWikiLink
 } = require('../src/lib/text-utils');
 
 test('toggleTaskCheckbox skips task-like lines inside fenced code blocks', () => {
@@ -129,4 +130,16 @@ test('findNoteByTitle resolves wiki targets case-insensitively, by path, and by 
   assert.equal(findNoteByTitle(files, 'notes')?.path, '/v/notes.txt');
   assert.equal(findNoteByTitle(files, 'Missing'), null);
   assert.equal(findNoteByTitle(files, '  '), null);
+});
+
+test('resolveWikiLink prefers a title containing # and ignores pure anchors', () => {
+  const files = [
+    { name: 'Meeting #3.md', path: '/v/Meeting #3.md', relativePath: 'Meeting #3.md' },
+    { name: 'Alpha.md', path: '/v/Alpha.md', relativePath: 'Alpha.md' }
+  ];
+  assert.equal(resolveWikiLink(files, 'Meeting #3').note?.path, '/v/Meeting #3.md');
+  assert.equal(resolveWikiLink(files, 'Alpha#Intro').note?.path, '/v/Alpha.md');
+  assert.deepEqual(resolveWikiLink(files, 'New#Part'), { note: null, title: 'New' });
+  assert.deepEqual(resolveWikiLink(files, '#Heading'), { note: null, title: null });
+  assert.deepEqual(resolveWikiLink(files, '  '), { note: null, title: null });
 });

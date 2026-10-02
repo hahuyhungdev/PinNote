@@ -97,6 +97,17 @@ function findNoteByTitle(files = [], target) {
     || null;
 }
 
+/**
+ * Resolve [[link]] text: the whole text may be a title containing "#" ("Meeting #3"); otherwise
+ * "#..." is a heading. Returns the note to open, or the title to create (null for a same-note anchor).
+ */
+function resolveWikiLink(files, link) {
+  const full = String(link ?? '').trim();
+  const title = full.split('#')[0].trim();
+  const note = (full && findNoteByTitle(files, full)) || (title && findNoteByTitle(files, title)) || null;
+  return { note, title: note || !title ? null : title };
+}
+
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
 
 /**
@@ -133,5 +144,6 @@ module.exports = {
   noteTitle,
   sanitizeNoteName,
   isPathInside,
-  findNoteByTitle
+  findNoteByTitle,
+  resolveWikiLink
 };

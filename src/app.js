@@ -3,7 +3,7 @@
  * High-leverage coordinator binding Vault Management, Smart Editor, Note History, and Floating Sticky Notes
  */
 
-import { renderMarkdown, extractTags, enhancePreview, flattenNoteFiles, noteTitle, findNoteByTitle } from './modules/preview.js';
+import { renderMarkdown, extractTags, enhancePreview, flattenNoteFiles, noteTitle, resolveWikiLink } from './modules/preview.js';
 import { setupSmartEditor, insertFormat } from './modules/smart-editor.js';
 import { recordNoteSnapshot } from './modules/history.js';
 import { HistoryModal } from './modules/history-modal.js';
@@ -217,7 +217,10 @@ function setActiveNoteUI(filePath) {
 
 async function openNote(filePath) {
   // Already open: re-reading from disk would discard typing that has not been saved yet
-  if (filePath === state.activeNotePath) return;
+  if (filePath === state.activeNotePath) {
+    state.openToken++; // also cancels an older open that is still reading
+    return;
+  }
   const token = ++state.openToken;
 
   if (state.activeNotePath && state.isDirty) {
@@ -298,6 +301,7 @@ async function createNewNote(customTitle = null) {
 
 function clearEditor() {
   clearTimeout(state.saveTimeout);
+  state.openToken++;
   state.activeNotePath = null;
   state.isDirty = false;
   dom.markdownInput.value = '';
@@ -355,9 +359,9 @@ function updatePreviewNow() {
       schedulePreviewUpdate();
     },
     onWikiLink: (targetTitle) => {
-      const target = findNoteByTitle(allFiles(), targetTitle);
-      if (target) openNote(target.path);
-      else createNewNote(targetTitle);
+      const { note, title } = resolveWikiLink(allFiles(), targetTitle);
+      if (note) openNote(note.path);
+      else if (title) createNewNote(title);
     }
   });
 }
