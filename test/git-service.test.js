@@ -231,3 +231,35 @@ test('the guard also checks the commit author, so a company email is not publish
   await git.setIdentity(dir, 'hahuyhungdev', 'hahuyhungdev@gmail.com');
   assert.equal((await git.commit(dir, 'x', { guard: 'nexon' })).committed, true);
 });
+
+test('local-only folders are kept out of Git without deleting the notes', async () => {
+  const dir = path.join(tmp, 'localonly');
+  write(dir, 'Public.md', '# Public\n');
+  write(dir, 'Work/Clients/Acme.md', '# Acme\n');
+  write(dir, '[Draft] #1/Idea.md', '# Odd name\n');
+  await git.init(dir);
+  await git.commit(dir, 'Start');
+  assert.match(sh(dir, 'ls-files'), /Work\/Clients\/Acme\.md/);
+
+  assert.deepEqual(await git.setLocalOnly(dir, ['Work', '[Draft] #1']), ['Work', '[Draft] #1']);
+  assert.deepEqual(await git.getLocalOnly(dir), ['Work', '[Draft] #1']);
+  const ignore = fs.readFileSync(path.join(dir, '.gitignore'), 'utf-8');
+  assert.match(ignore, /^\.pinnote\/$/m, 'existing rules are kept');
+  assert.match(ignore, /^\/Work\/$/m);
+
+  // Already-committed notes are untracked on the next commit but stay on disk
+  await git.commit(dir, 'Keep Work local');
+  assert.doesNotMatch(sh(dir, 'ls-files'), /Acme|Idea/);
+  assert.ok(fs.existsSync(path.join(dir, 'Work/Clients/Acme.md')));
+
+  write(dir, 'Work/Clients/Acme.md', '# Acme\nsecret pricing\n');
+  write(dir, '[Draft] #1/Idea.md', '# changed\n');
+  assert.deepEqual((await git.status(dir)).changes, [], 'edits in local-only folders are invisible to Git');
+
+  assert.deepEqual(await git.setLocalOnly(dir, ['[Draft] #1']), ['[Draft] #1']);
+  assert.deepEqual((await git.status(dir)).changes.map(c => c.path), ['.gitignore', 'Work/Clients/Acme.md']);
+
+  for (const bad of ['../outside', '/abs', '.pinnote', 'Missing folder']) {
+    await assert.rejects(git.setLocalOnly(dir, [bad]), /folder/i, bad);
+  }
+});

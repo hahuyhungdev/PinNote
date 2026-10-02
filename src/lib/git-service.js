@@ -12,6 +12,8 @@ const { parseRules, scanDiff, scanPaths } = require('./commit-guard');
 const NETWORK_TIMEOUT = 120000;
 const LOCAL_TIMEOUT = 30000;
 const IGNORE_RULE = '.pinnote/';
+const LOCAL_BEGIN = '# >>> PinNote local-only folders (managed by PinNote, edit in the app)';
+const LOCAL_END = '# <<< PinNote local-only folders';
 
 // ==========================================
 // Pure helpers
@@ -95,6 +97,22 @@ const canonical = (p) => {
     return path.resolve(p);
   }
 };
+// gitignore treats these specially; a backslash makes them literal
+const escapeIgnore = (s) => s.replace(/[\\*?[\]!#]/g, '\\$&');
+const unescapeIgnore = (s) => s.replace(/\\(.)/g, '$1');
+
+function splitLocalBlock(text) {
+  const start = text.indexOf(LOCAL_BEGIN);
+  const end = start === -1 ? -1 : text.indexOf(LOCAL_END, start);
+  if (start === -1 || end === -1) return { before: text, block: '', after: '' };
+  const stop = text.indexOf('\n', end);
+  return {
+    before: text.slice(0, start),
+    block: text.slice(start + LOCAL_BEGIN.length, end),
+    after: stop === -1 ? '' : text.slice(stop + 1)
+  };
+}
+
 const samePath = (a, b) => process.platform === 'win32'
   ? canonical(a).toLowerCase() === canonical(b).toLowerCase()
   : canonical(a) === canonical(b);
@@ -299,7 +317,54 @@ function createGitService({ gitPath = 'git', env = {} } = {}) {
     return identity(dir);
   }
 
-  return { available, status, init, setRemote, commit, pull, push, sync, identity, setIdentity };
+  const ignoreFile = (dir) => path.join(dir, '.gitignore');
+  const readIgnore = (dir) => (fs.existsSync(ignoreFile(dir)) ? fs.readFileSync(ignoreFile(dir), 'utf-8') : '');
+
+  /** Vault-relative folders kept out of Git (from PinNote's managed block in .gitignore) */
+  async function getLocalOnly(dir) {
+    return splitLocalBlock(readIgnore(dir)).block
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('#'))
+      .map(l => unescapeIgnore(l.replace(/^\//, '').replace(/\/$/, '')));
+  }
+
+  function validateFolder(dir, folder) {
+    const rel = String(folder ?? '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
+    const parts = rel.split('/');
+    const invalid = !rel || rel.startsWith('/') || path.isAbsolute(rel) ||
+      parts.some(p => !p || p === '..' || p.startsWith('.'));
+    let isDir = false;
+    try {
+      isDir = !invalid && fs.statSync(path.join(dir, rel)).isDirectory();
+    } catch (e) {}
+    if (!isDir) throw new Error(`"${folder}" is not a folder in this vault`);
+    return rel;
+  }
+
+  /**
+   * Replace the local-only folder list. Newly listed folders are also removed from the index so
+   * notes committed earlier stop being tracked (the files stay on disk).
+   */
+  async function setLocalOnly(dir, folders = []) {
+    await requireRepo(dir);
+    const list = [...new Set(folders.map(f => validateFolder(dir, f)))];
+    const previous = await getLocalOnly(dir);
+
+    const { before, after } = splitLocalBlock(readIgnore(dir));
+    const rest = `${before}${after}`.replace(/\n*$/, '');
+    const block = list.length
+      ? `${rest ? '\n\n' : ''}${LOCAL_BEGIN}\n${list.map(f => `/${f.split('/').map(escapeIgnore).join('/')}/`).join('\n')}\n${LOCAL_END}`
+      : '';
+    fs.writeFileSync(ignoreFile(dir), `${rest}${block}\n`, 'utf-8');
+
+    for (const folder of list.filter(f => !previous.includes(f))) {
+      await run(dir, ['--literal-pathspecs', 'rm', '-r', '--cached', '--ignore-unmatch', '-q', '--', folder]);
+    }
+    return list;
+  }
+
+  return { available, status, init, setRemote, commit, pull, push, sync, identity, setIdentity, getLocalOnly, setLocalOnly };
 }
 
 module.exports = { createGitService, parseStatus, isValidRemoteUrl, defaultCommitMessage };
