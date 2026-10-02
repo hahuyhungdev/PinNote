@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { extractTags, flattenNoteFiles, sanitizeNoteName, isPathInside, getNoteStatus } = require('./src/lib/text-utils');
+const { createGitService } = require('./src/lib/git-service');
+const { DEFAULT_GUARD_RULES, parseRules } = require('./src/lib/commit-guard');
 
 function logDebug(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
@@ -709,6 +711,105 @@ ipcMain.handle('create-folder', (event, vaultPath, parentDir, name) => {
   fs.mkdirSync(target);
   broadcast('vault-tree-changed');
   return target;
+});
+
+// ==========================================
+// GIT (vault version control) & COMMIT GUARD
+// ==========================================
+
+const git = createGitService();
+const MAX_GUARD_BYTES = 64 * 1024;
+
+// Guard rules sit in .pinnote/ (git-ignored) so words like a company name are never pushed
+const guardFile = (vault) => path.join(vault, '.pinnote', 'guard.txt');
+
+function readGuard(vault) {
+  try {
+    return fs.readFileSync(guardFile(vault), 'utf-8');
+  } catch (e) {
+    return DEFAULT_GUARD_RULES;
+  }
+}
+
+function writeGuard(vault, text) {
+  fs.mkdirSync(path.dirname(guardFile(vault)), { recursive: true });
+  fs.writeFileSync(guardFile(vault), text, 'utf-8');
+}
+
+// After a pull, notes may have changed under open editors
+function notifyIfUpdated(result) {
+  if (result?.updated) {
+    broadcast('vault-files-changed');
+    broadcast('vault-tree-changed');
+  }
+  return result;
+}
+
+ipcMain.handle('git-status', async (event, vaultPath) => {
+  const dir = resolveVault(vaultPath);
+  if (!(await git.available())) return { available: false };
+  const status = await git.status(dir);
+  if (!status.isRepo) return { available: true, ...status };
+  return {
+    available: true,
+    ...status,
+    identity: await git.identity(dir),
+    // Absolute paths, matching the folder paths the sidebar knows
+    localOnly: (await git.getLocalOnly(dir)).map(rel => path.join(dir, rel))
+  };
+});
+
+ipcMain.handle('git-set-local-only', async (event, vaultPath, folders) => {
+  const dir = resolveVault(vaultPath);
+  if (!Array.isArray(folders)) throw new Error('Invalid folder list');
+  const relative = folders.map(folder => path.relative(dir, assertDirInVault(folder)));
+  const list = await git.setLocalOnly(dir, relative);
+  broadcast('vault-tree-changed');
+  return list.map(rel => path.join(dir, rel));
+});
+
+ipcMain.handle('git-init', async (event, vaultPath) => {
+  const dir = resolveVault(vaultPath);
+  await git.init(dir);
+  if (!fs.existsSync(guardFile(dir))) writeGuard(dir, DEFAULT_GUARD_RULES);
+  return true;
+});
+
+ipcMain.handle('git-set-remote', async (event, vaultPath, url) => {
+  await git.setRemote(resolveVault(vaultPath), url);
+  return true;
+});
+
+ipcMain.handle('git-set-identity', (event, vaultPath, name, email) =>
+  git.setIdentity(resolveVault(vaultPath), name, email));
+
+ipcMain.handle('git-commit', (event, vaultPath, message, force) => {
+  const dir = resolveVault(vaultPath);
+  return git.commit(dir, String(message ?? ''), { guard: readGuard(dir), force: force === true });
+});
+
+ipcMain.handle('git-pull', async (event, vaultPath) => notifyIfUpdated(await git.pull(resolveVault(vaultPath))));
+
+ipcMain.handle('git-push', (event, vaultPath, force) => {
+  const dir = resolveVault(vaultPath);
+  return git.push(dir, { guard: readGuard(dir), force: force === true });
+});
+
+ipcMain.handle('git-sync', async (event, vaultPath, message, { forceCommit = false, forcePush = false } = {}) => {
+  const dir = resolveVault(vaultPath);
+  return notifyIfUpdated(await git.sync(dir, String(message ?? ''), {
+    guard: readGuard(dir),
+    forceCommit: forceCommit === true,
+    forcePush: forcePush === true
+  }));
+});
+
+ipcMain.handle('git-guard-read', (event, vaultPath) => readGuard(resolveVault(vaultPath)));
+
+ipcMain.handle('git-guard-write', (event, vaultPath, text) => {
+  if (typeof text !== 'string' || Buffer.byteLength(text) > MAX_GUARD_BYTES) throw new Error('Guard rules are too large');
+  writeGuard(resolveVault(vaultPath), text);
+  return parseRules(text).errors;
 });
 
 // ==========================================

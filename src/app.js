@@ -11,6 +11,7 @@ import { HistoryModal } from './modules/history-modal.js';
 import { NoteManager, getDefaultNoteName } from './modules/note-manager.js';
 import { QuickSwitcher } from './modules/quick-switcher.js';
 import { UIControls } from './modules/ui-controls.js';
+import { GitPanel } from './modules/git-panel.js';
 
 // Application State
 const state = {
@@ -24,7 +25,9 @@ const state = {
   openToken: 0,
   statusFilter: STATUS_FILTERS.includes(localStorage.getItem('pinnote_status_filter')) ? localStorage.getItem('pinnote_status_filter') : 'all',
   folderScope: localStorage.getItem('pinnote_folder_scope') || null,
-  collapsedFolders: new Set(readJson('pinnote_collapsed_folders', []))
+  collapsedFolders: new Set(readJson('pinnote_collapsed_folders', [])),
+  localOnly: new Set(),
+  gitRefreshTimer: null
 };
 
 function readJson(key, fallback) {
@@ -102,7 +105,9 @@ const dom = {
   quickInput: $('quick-input'),
   quickResults: $('quick-results'),
 
-  historyModal: $('history-modal')
+  historyModal: $('history-modal'),
+  gitModal: $('git-modal'),
+  gitStatusItem: $('git-status-item')
 };
 
 // Module Instances
@@ -110,6 +115,7 @@ let noteManager;
 let historyModal;
 let quickSwitcher;
 let uiControls;
+let gitPanel;
 
 const allFiles = () => flattenNoteFiles(state.notesTree);
 const fileName = (p) => p.split(/[/\\]/).pop();
@@ -146,6 +152,16 @@ async function initApp() {
     inputEl: dom.quickInput,
     resultsEl: dom.quickResults,
     onSelectNote: (filePath) => openNote(filePath)
+  });
+
+  gitPanel = new GitPanel({
+    modalEl: dom.gitModal,
+    statusItemEl: dom.gitStatusItem,
+    getVaultPath: () => state.currentVaultPath,
+    // Git must see what is on screen, so pending edits are written first
+    beforeGit: async () => { if (state.isDirty) await saveCurrentNote(true); },
+    getFolders: () => listFolders(state.notesTree),
+    onStatus: (status) => applyLocalOnly(status.localOnly || [])
   });
 
   setupEventListeners();
@@ -191,6 +207,7 @@ async function refreshVault() {
   // Re-checks the remembered folder scope against the fresh tree and renders the sidebar
   await setFolderScope(state.folderScope);
   updateTagsCloud();
+  scheduleGitRefresh(0);
 }
 
 async function renderTreeUI() {
@@ -221,7 +238,7 @@ async function renderTreeUI() {
       onNewNoteIn: (folderPath) => createNewNote(null, folderPath),
       onNewFolderIn: (folderPath) => createFolder(folderPath)
     },
-    { tagMatches, status: state.statusFilter, scope: state.folderScope, collapsed: state.collapsedFolders }
+    { tagMatches, status: state.statusFilter, scope: state.folderScope, collapsed: state.collapsedFolders, localOnly: state.localOnly }
   );
   updateStatusCounts();
 }
@@ -235,6 +252,47 @@ function toggleFolder(folderPath) {
   else state.collapsedFolders.add(folderPath);
   localStorage.setItem('pinnote_collapsed_folders', JSON.stringify([...state.collapsedFolders]));
   renderTreeUI();
+}
+
+function listFolders(items, out = []) {
+  for (const item of items) {
+    if (item.type !== 'directory') continue;
+    out.push({ path: item.path, relativePath: item.relativePath });
+    listFolders(item.children || [], out);
+  }
+  return out;
+}
+
+// ==========================================
+// GIT
+// ==========================================
+
+function applyLocalOnly(paths) {
+  const next = new Set(paths);
+  if (next.size === state.localOnly.size && paths.every(p => state.localOnly.has(p))) return;
+  state.localOnly = next;
+  renderTreeUI();
+}
+
+/** Keep the status-bar Git summary current without running git on every keystroke */
+function scheduleGitRefresh(delay = 1500) {
+  clearTimeout(state.gitRefreshTimer);
+  state.gitRefreshTimer = setTimeout(() => gitPanel.refresh(), delay);
+}
+
+/** After a pull, re-read the open note unless it has unsaved typing */
+async function reloadActiveNoteFromDisk() {
+  if (!state.activeNotePath || state.isDirty) return;
+  const filePath = state.activeNotePath;
+  const content = await noteManager.readNote(filePath).catch(() => null);
+  if (state.activeNotePath !== filePath || state.isDirty) return;
+  if (content === null) return clearEditor();
+  if (content === dom.markdownInput.value) return;
+  dom.markdownInput.value = content;
+  updatePreviewNow();
+  updateStats();
+  syncStatusFromEditor();
+  setSaveStatus('Updated from Git', 'saved');
 }
 
 async function createFolder(parentPath = state.folderScope) {
@@ -425,6 +483,7 @@ async function saveCurrentNote(forceSnapshot = false) {
       setSaveStatus('Saved', 'saved');
     }
     recordNoteSnapshot(filePath, content, forceSnapshot);
+    scheduleGitRefresh();
   } catch (err) {
     console.error('Save error:', err);
     setSaveStatus('Save failed', 'error');
@@ -590,6 +649,7 @@ function setupCrossWindowSync() {
   });
 
   window.pinNoteAPI.onVaultTreeChanged(() => refreshVault());
+  window.pinNoteAPI.onVaultFilesChanged(() => reloadActiveNoteFromDisk());
 
   // Flush pending edits before the window closes (close button, Alt+F4, taskbar)
   window.pinNoteAPI.onBeforeClose(async () => {
@@ -706,6 +766,7 @@ function handleGlobalShortcut(e) {
     if (e.code === 'Equal' || e.code === 'NumpadAdd') { e.preventDefault(); uiControls.stepUiScale(1); }
     else if (e.code === 'Minus' || e.code === 'NumpadSubtract') { e.preventDefault(); uiControls.stepUiScale(-1); }
     else if (e.code === 'Digit0' || e.code === 'Numpad0') { e.preventDefault(); uiControls.resetUiScale(); }
+    else if (e.code === 'KeyG') { e.preventDefault(); gitPanel.open(); }
     return;
   }
 

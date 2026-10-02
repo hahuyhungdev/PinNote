@@ -127,7 +127,7 @@ class NoteManager {
   }
 
   _renderTreeContent(items, container, filterQuery = '', activeNotePath = null, callbacks = {},
-    { tagMatches = null, status = 'all', scope = null, collapsed = new Set() } = {}) {
+    { tagMatches = null, status = 'all', scope = null, collapsed = new Set(), localOnly = new Set() } = {}) {
     container.innerHTML = '';
 
     if (flattenNoteFiles(items).length === 0 && !items.some(i => i.type === 'directory')) {
@@ -138,7 +138,7 @@ class NoteManager {
     const cleanQuery = filterQuery.trim().toLowerCase();
     const textSearch = cleanQuery && !tagMatches;
     const tree = buildTreeView(items, { status, tagMatches, scope });
-    const ctx = { activeNotePath, callbacks };
+    const ctx = { activeNotePath, callbacks, localOnly };
 
     const matchingFiles = flattenNoteFiles(tree).filter(f => !textSearch
       || f.name.toLowerCase().includes(cleanQuery)
@@ -202,6 +202,13 @@ class NoteManager {
       </div>
     `;
     row.querySelector('.folder-name').textContent = folder.name;
+    if (ctx.localOnly?.has(folder.path)) {
+      const badge = document.createElement('span');
+      badge.className = 'folder-local';
+      badge.textContent = 'local';
+      badge.title = 'Local only — kept out of Git';
+      row.querySelector('.folder-name').after(badge);
+    }
     row.querySelector('.folder-count').textContent = String(folder.count);
 
     const toggle = () => ctx.callbacks.onToggleFolder?.(folder.path);

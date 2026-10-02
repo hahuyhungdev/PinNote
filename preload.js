@@ -55,6 +55,20 @@ const api = {
   getNoteHistory: (filePath) => invoke('get-note-history', filePath),
   restoreNoteSnapshot: (filePath, snapshotId) => invoke('restore-note-snapshot', filePath, snapshotId),
 
+  // Git (vault version control) & commit guard
+  gitStatus: (vaultPath) => invoke('git-status', vaultPath),
+  gitInit: (vaultPath) => invoke('git-init', vaultPath),
+  gitSetRemote: (vaultPath, url) => invoke('git-set-remote', vaultPath, url),
+  gitSetIdentity: (vaultPath, name, email) => invoke('git-set-identity', vaultPath, name, email),
+  gitCommit: (vaultPath, message, force) => invoke('git-commit', vaultPath, message, force),
+  gitPull: (vaultPath) => invoke('git-pull', vaultPath),
+  gitPush: (vaultPath, force) => invoke('git-push', vaultPath, force),
+  gitSync: (vaultPath, message, options) => invoke('git-sync', vaultPath, message, options),
+  gitSetLocalOnly: (vaultPath, folders) => invoke('git-set-local-only', vaultPath, folders),
+  gitGuardRead: (vaultPath) => invoke('git-guard-read', vaultPath),
+  gitGuardWrite: (vaultPath, text) => invoke('git-guard-write', vaultPath, text),
+  onVaultFilesChanged: (callback) => on('vault-files-changed', callback),
+
   // Cross-window event listeners
   onFileSavedExternally: (callback) => on('file-saved-externally', callback),
   onFileRenamedExternally: (callback) => on('file-renamed-externally', callback),

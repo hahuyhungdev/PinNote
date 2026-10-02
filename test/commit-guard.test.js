@@ -98,3 +98,11 @@ test('default rules leave ordinary notes alone', () => {
     assert.equal(matches(plain), false, plain);
   }
 });
+
+test('findings carry a readable label: the word itself, or the comment heading above a regex', () => {
+  const { rules } = parseRules('# Internal network addresses\n/\\b192\\.168\\.\\d+\\.\\d+\\b/\n\n/orphan/\nnexon');
+  assert.deepEqual(rules.map(r => r.label), ['Internal network addresses', '/orphan/', '"nexon"']);
+  const [finding] = scanDiff('+++ b/a.md\n@@ -0,0 +1 @@\n+server 192.168.1.2', rules);
+  assert.equal(finding.label, 'Internal network addresses');
+  assert.equal(scanPaths(['Nexon.md'], rules)[0].label, '"nexon"');
+});

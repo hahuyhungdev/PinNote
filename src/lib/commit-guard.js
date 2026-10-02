@@ -55,22 +55,34 @@ mật khẩu
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * @returns {{ rules: {source: string, re: RegExp}[], errors: string[] }}
+ * Each rule gets a readable `label`: a plain word shows itself; a regex shows the comment
+ * heading directly above its block (or its own source when there is none).
+ * @returns {{ rules: {source: string, label: string, re: RegExp}[], errors: string[] }}
  */
 function parseRules(text) {
   const rules = [];
   const errors = [];
+  let heading = null;
   for (const raw of String(text ?? '').split(/\r?\n/)) {
     // NFC so Vietnamese rules match however the text was composed
     const line = raw.trim().normalize('NFC');
-    if (!line || line.startsWith('#')) continue;
+    if (!line) {
+      heading = null;
+      continue;
+    }
+    if (line.startsWith('#')) {
+      const comment = line.replace(/^#+\s*/, '');
+      // Commented-out rules are not headings
+      if (comment && !comment.startsWith('/')) heading = comment;
+      continue;
+    }
     const regex = /^\/(.+)\/([a-z]*)$/.exec(line);
     try {
       // Flags never include g/y: those make RegExp.test stateful between lines
       const re = regex
         ? new RegExp(regex[1], regex[2].replace(/[gy]/g, ''))
         : new RegExp(escapeRegExp(line), 'i');
-      rules.push({ source: line, re });
+      rules.push({ source: line, label: regex ? (heading || line) : `"${line}"`, re });
     } catch (err) {
       errors.push(`${line}: ${err.message}`);
     }
@@ -106,7 +118,7 @@ function scanDiff(diffText, rules) {
 
     const text = line.slice(1).normalize('NFC');
     const rule = rules.find(r => r.re.test(text));
-    if (rule) findings.push({ file, line: lineNo, rule: rule.source, excerpt: excerptOf(text) });
+    if (rule) findings.push({ file, line: lineNo, rule: rule.source, label: rule.label, excerpt: excerptOf(text) });
     lineNo++;
   }
   return findings;
@@ -116,7 +128,7 @@ function scanDiff(diffText, rules) {
 function scanPaths(paths, rules) {
   return paths.flatMap((file) => {
     const rule = rules.find(r => r.re.test(file.normalize('NFC')));
-    return rule ? [{ file, line: null, rule: rule.source, excerpt: file }] : [];
+    return rule ? [{ file, line: null, rule: rule.source, label: rule.label, excerpt: file }] : [];
   });
 }
 

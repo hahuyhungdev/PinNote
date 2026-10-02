@@ -42,8 +42,13 @@ function makeSandbox(notes = {}) {
   };
 }
 
-async function launchApp(sandbox) {
-  const app = await _electron.launch({ executablePath: electronPath, args: sandbox.args, timeout: 60000 });
+async function launchApp(sandbox, { env = {} } = {}) {
+  const app = await _electron.launch({
+    executablePath: electronPath,
+    args: sandbox.args,
+    env: { ...process.env, ...env },
+    timeout: 60000
+  });
   const win = await app.firstWindow();
   const pageErrors = [];
   win.on('pageerror', (err) => pageErrors.push(err.message));

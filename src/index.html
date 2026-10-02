@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="../node_modules/highlight.js/styles/github.css">
 
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="git-panel.css">
 </head>
 <body>
   <div id="app" class="app-container">
@@ -254,6 +255,7 @@
     <!-- Status Bar Foot -->
     <footer class="statusbar">
       <div class="status-left">
+        <button type="button" id="git-status-item" class="status-item git-status-item" title="Git (Ctrl+Shift+G)">Git</button>
         <span id="current-vault-path" class="status-item path-text">...</span>
       </div>
       <div class="status-right">
@@ -337,6 +339,99 @@
           <span>Restoring saves your current note first, so you can always undo.</span>
           <span><kbd>ESC</kbd> to close</span>
         </div>
+      </div>
+    </div>
+
+    <!-- Git Panel -->
+    <div id="git-modal" class="modal-overlay hidden">
+      <div class="modal-card git-card" role="dialog" aria-modal="true" aria-labelledby="git-title">
+        <div class="git-header">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/>
+            <path d="M6 8.5v7M18 10.5c0 4-4 4.5-9.5 6"/>
+          </svg>
+          <div class="git-header-text">
+            <h3 id="git-title" class="git-title">Git</h3>
+            <div id="git-subtitle" class="git-subtitle"></div>
+          </div>
+          <button id="btn-close-git" class="win-btn win-close-modal" title="Close (Esc)" aria-label="Close Git">&times;</button>
+        </div>
+
+        <div class="git-body">
+          <section id="git-unavailable" class="git-section git-empty" hidden>
+            <p class="git-lead">Git isn't installed on this computer.</p>
+            <p>Install <strong>Git for Windows</strong> from git-scm.com, then reopen this panel.</p>
+          </section>
+
+          <section id="git-setup" class="git-section git-empty" hidden>
+            <p class="git-lead">This vault isn't under version control yet.</p>
+            <p>Initializing creates a Git repository in the vault folder, keeps PinNote's local history (<code>.pinnote/</code>) out of it, and adds commit-guard rules that stop sensitive content from being committed.</p>
+            <button type="button" id="btn-git-init" class="git-btn primary">Initialize Git</button>
+          </section>
+
+          <div id="git-repo" hidden>
+            <section id="git-guard" class="git-section git-guard" role="alert" hidden>
+              <div class="git-guard-title">Possible sensitive content — <span id="git-guard-stage">commit</span> stopped</div>
+              <p class="git-hint">Review these matches. Nothing was sent. Edit the notes, or confirm if they are safe to publish.</p>
+              <ul id="git-guard-list" class="git-guard-list"></ul>
+              <div class="git-actions">
+                <button type="button" id="btn-git-guard-cancel" class="git-btn">Cancel</button>
+                <button type="button" id="btn-git-force" class="git-btn danger">Commit anyway</button>
+              </div>
+            </section>
+            <section class="git-section git-settings">
+              <label class="git-label" for="git-name">Commit as</label>
+              <div class="git-row">
+                <input id="git-name" class="git-input" placeholder="Name" autocomplete="off">
+                <input id="git-email" class="git-input" placeholder="Email" autocomplete="off">
+                <button type="button" id="btn-git-identity" class="git-btn">Save</button>
+              </div>
+              <p class="git-hint">Saved in this vault's repository only, so your global (work) Git identity is not used here.</p>
+
+              <label class="git-label" for="git-remote-url">Remote</label>
+              <div class="git-row">
+                <input id="git-remote-url" class="git-input wide" placeholder="https://github.com/you/notes.git" autocomplete="off">
+                <button type="button" id="btn-git-remote" class="git-btn">Connect</button>
+              </div>
+
+              <label class="git-label" for="git-local-only-add">Local-only folders</label>
+              <div class="git-row git-local-row">
+                <div id="git-local-only" class="git-chips"></div>
+                <select id="git-local-only-add" class="git-input" aria-label="Keep a folder out of Git"></select>
+              </div>
+            </section>
+
+            <section class="git-section">
+              <div class="git-section-title">
+                <span>Changes <span id="git-change-count" class="git-count"></span></span>
+                <span id="git-sync-state" class="git-sync-state"></span>
+              </div>
+              <ul id="git-changes" class="git-changes"></ul>
+              <input id="git-commit-message" class="git-input wide" placeholder="Commit message (optional — PinNote writes one if empty)" autocomplete="off">
+              <div class="git-actions">
+                <button type="button" id="btn-git-commit" class="git-btn">Commit</button>
+                <button type="button" id="btn-git-pull" class="git-btn">Pull</button>
+                <button type="button" id="btn-git-push" class="git-btn">Push</button>
+                <button type="button" id="btn-git-sync" class="git-btn primary" title="Commit, pull, then push">Sync</button>
+              </div>
+            </section>
+
+
+            <section class="git-section">
+              <button type="button" id="git-guard-rules-toggle" class="git-disclosure" aria-expanded="false" aria-controls="git-guard-editor">Commit guard rules</button>
+              <div id="git-guard-editor" hidden>
+                <p class="git-hint">One rule per line: a word or phrase (case-insensitive) or a <code>/regular expression/</code>. Stored in <code>.pinnote/guard.txt</code>, never committed.</p>
+                <textarea id="git-guard-rules" class="git-input git-rules" spellcheck="false" rows="12" aria-label="Commit guard rules"></textarea>
+                <div class="git-actions">
+                  <span id="git-guard-errors" class="git-guard-errors"></span>
+                  <button type="button" id="btn-git-guard-save" class="git-btn">Save rules</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div id="git-feedback" class="git-feedback" role="status" aria-live="polite"></div>
       </div>
     </div>
 

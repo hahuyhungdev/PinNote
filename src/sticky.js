@@ -175,6 +175,16 @@ async function initSticky() {
     setStatus('Synced', 'saved');
   });
 
+  // A Git pull may have changed this note on disk
+  window.pinNoteAPI.onVaultFilesChanged(async () => {
+    if (!currentFilePath || isDirty) return;
+    const content = await window.pinNoteAPI.readFileContent(currentFilePath).catch(() => null);
+    if (content === null || isDirty || content === dom.input.value) return;
+    dom.input.value = content;
+    updatePreview();
+    setStatus('Updated from Git', 'saved');
+  });
+
   window.pinNoteAPI.onFileRenamedExternally((oldPath, newPath) => {
     if (oldPath === currentFilePath) {
       currentFilePath = newPath;
