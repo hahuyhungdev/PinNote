@@ -27,6 +27,7 @@ class UIControls {
     this.dom = dom;
     this.onModeChange = onModeChange;
     this.onFontSizeChange = onFontSizeChange;
+    this.syncPausedUntil = 0;
 
     const savedMode = localStorage.getItem('pinnote_view_mode');
     this.currentViewMode = ['editor', 'split', 'preview'].includes(savedMode) ? savedMode : 'split';
@@ -226,6 +227,11 @@ class UIControls {
     window.addEventListener('resize', () => this._renderSidebarWidth());
   }
 
+  /** Let both panes be positioned independently for a moment (e.g. jumping to a heading) */
+  pauseSyncScroll(ms = 200) {
+    this.syncPausedUntil = Date.now() + ms;
+  }
+
   setupSyncScrolling() {
     if (!this.dom.markdownInput || !this.dom.previewWrapper) return;
 
@@ -233,7 +239,7 @@ class UIControls {
     let isPreviewScrolling = false;
 
     this.dom.markdownInput.addEventListener('scroll', () => {
-      if (isPreviewScrolling || this.currentViewMode !== 'split') return;
+      if (isPreviewScrolling || this.currentViewMode !== 'split' || Date.now() < this.syncPausedUntil) return;
       isEditorScrolling = true;
       const ratio = this.dom.markdownInput.scrollTop / (this.dom.markdownInput.scrollHeight - this.dom.markdownInput.clientHeight || 1);
       this.dom.previewWrapper.scrollTop = ratio * (this.dom.previewWrapper.scrollHeight - this.dom.previewWrapper.clientHeight);
@@ -241,7 +247,7 @@ class UIControls {
     });
 
     this.dom.previewWrapper.addEventListener('scroll', () => {
-      if (isEditorScrolling || this.currentViewMode !== 'split') return;
+      if (isEditorScrolling || this.currentViewMode !== 'split' || Date.now() < this.syncPausedUntil) return;
       isPreviewScrolling = true;
       const ratio = this.dom.previewWrapper.scrollTop / (this.dom.previewWrapper.scrollHeight - this.dom.previewWrapper.clientHeight || 1);
       this.dom.markdownInput.scrollTop = ratio * (this.dom.markdownInput.scrollHeight - this.dom.markdownInput.clientHeight);

@@ -34,6 +34,7 @@ An elegant, lightweight Obsidian-inspired Markdown note-taking app with detached
 - **Folders & Filters**: Notes are shown inside their folders (real folders on disk, nested as deep as you like), with note counts; click a folder to collapse it. Status chips (**All**, **Open**, **To do**, **Doing**, **Waiting**, **Done**) filter the tree, and *Show only this folder* narrows everything — tree, counts and new notes — to one folder, so "Work + Waiting" is two clicks. Create folders from the sidebar header or a folder's hover actions, and drag a note onto a folder (or the empty list area for the root) to move it; its revision history, pin and open sticky window move with it.
 - **Git Sync with a Commit Guard** (`Ctrl + Shift + G`, or the Git item in the status bar): initialize the vault as a repository, connect your GitHub repo, and **Commit**, **Pull**, **Push** or one-click **Sync** (commit → pull --rebase → push). Uses your installed Git and its sign-in; a conflicting pull is aborted cleanly. *Commit as* sets the author for the vault repo only, so a work identity is never used. **Local-only folders** stay on your computer and are never committed (managed block in `.gitignore`, marked `local` in the sidebar).
   - The **commit guard** scans everything you commit and push — added lines, file names and the commit author — against rules stored in PinNote's settings for that vault (never inside the vault, so they are never committed and a downloaded vault can't switch them off; an empty rule set falls back to the defaults). Defaults cover company names (`nexon`), confidentiality labels in English and Vietnamese, API keys and passwords, `.env` secrets, database URLs with passwords, JWT/Bearer tokens, cloud provider keys, private keys, internal IPs and phone numbers. A match stops the commit or push and lists file, line and rule; you can edit the note, or confirm in a system dialog.
+- **Outline (Table of Contents)**: Toggle with the outline button in the title bar or `Ctrl + Shift + O`. Lists the note's headings indented by level; click one to jump both the editor and the preview there. The section you are reading is highlighted as you scroll (or follows the cursor in Edit mode).
 - **Resizable Sidebar**: Drag the sidebar edge (or focus it and use `←` / `→`); double-click resets the width. The width is remembered.
 
 ---
@@ -48,6 +49,8 @@ An elegant, lightweight Obsidian-inspired Markdown note-taking app with detached
 | `Ctrl + K` | Open Quick Switcher note finder |
 | `Ctrl + P` | Pop out active note to floating desktop sticky window |
 | `Ctrl + \` | Toggle sidebar visibility |
+| `Ctrl + Shift + O` | Toggle the outline (table of contents) |
+| `Ctrl + Shift + G` | Open the Git panel |
 | `Ctrl + =` / `Ctrl + +` | Larger editor & preview text |
 | `Ctrl + -` | Smaller editor & preview text |
 | `Ctrl + 0` | Reset editor text size to default (20px) |

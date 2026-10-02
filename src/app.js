@@ -12,6 +12,7 @@ import { NoteManager, getDefaultNoteName } from './modules/note-manager.js';
 import { QuickSwitcher } from './modules/quick-switcher.js';
 import { UIControls } from './modules/ui-controls.js';
 import { GitPanel } from './modules/git-panel.js';
+import { Outline } from './modules/outline.js';
 
 // Application State
 const state = {
@@ -107,6 +108,9 @@ const dom = {
 
   historyModal: $('history-modal'),
   gitModal: $('git-modal'),
+  btnOutline: $('btn-outline'),
+  outlinePane: $('outline-pane'),
+  outlineList: $('outline-list'),
   gitStatusItem: $('git-status-item')
 };
 
@@ -116,6 +120,7 @@ let historyModal;
 let quickSwitcher;
 let uiControls;
 let gitPanel;
+let outline;
 
 const allFiles = () => flattenNoteFiles(state.notesTree);
 const fileName = (p) => p.split(/[/\\]/).pop();
@@ -130,6 +135,18 @@ async function initApp() {
   uiControls = new UIControls({
     dom,
     onModeChange: () => schedulePreviewUpdate()
+  });
+
+  outline = new Outline({
+    paneEl: dom.outlinePane,
+    listEl: dom.outlineList,
+    toggleBtn: dom.btnOutline,
+    editorEl: dom.markdownInput,
+    previewWrapper: dom.previewWrapper,
+    previewEl: dom.markdownPreview,
+    getMode: () => uiControls.currentViewMode,
+    // Jumping positions editor and preview separately; keep scroll-sync from undoing it
+    beforeJump: () => uiControls.pauseSyncScroll()
   });
 
   historyModal = new HistoryModal({
@@ -517,6 +534,7 @@ function clearEditor() {
   state.isDirty = false;
   dom.markdownInput.value = '';
   dom.markdownPreview.innerHTML = '';
+  outline?.update('');
   setActiveNoteUI(null);
   updateStats();
 }
@@ -558,7 +576,10 @@ function schedulePreviewUpdate() {
 function updatePreviewNow() {
   updateTagsCloud();
   // Editor-only mode never shows the preview; skip the render work while typing
-  if (uiControls.currentViewMode === 'editor') return;
+  if (uiControls.currentViewMode === 'editor') {
+    outline?.update(dom.markdownInput.value);
+    return;
+  }
 
   dom.markdownPreview.innerHTML = renderMarkdown(dom.markdownInput.value);
   enhancePreview(dom.markdownPreview, {
@@ -575,6 +596,8 @@ function updatePreviewNow() {
       else if (title) createNewNote(title);
     }
   });
+  // After the preview so the outline can line up with the rendered headings
+  outline?.update(dom.markdownInput.value);
 }
 
 function updateTagsCloud() {
@@ -767,6 +790,7 @@ function handleGlobalShortcut(e) {
     else if (e.code === 'Minus' || e.code === 'NumpadSubtract') { e.preventDefault(); uiControls.stepUiScale(-1); }
     else if (e.code === 'Digit0' || e.code === 'Numpad0') { e.preventDefault(); uiControls.resetUiScale(); }
     else if (e.code === 'KeyG') { e.preventDefault(); gitPanel.open(); }
+    else if (e.code === 'KeyO') { e.preventDefault(); outline.toggle(); }
     return;
   }
 

@@ -89,6 +89,15 @@
           </svg>
         </button>
 
+        <!-- Toggle Outline (table of contents) -->
+        <button id="btn-outline" class="action-btn icon-only" title="Outline (Ctrl+Shift+O)" aria-label="Toggle outline" aria-pressed="false" aria-controls="outline-pane">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="4" y1="6" x2="20" y2="6"/>
+            <line x1="8" y1="12" x2="20" y2="12"/>
+            <line x1="12" y1="18" x2="20" y2="18"/>
+          </svg>
+        </button>
+
         <div class="divider"></div>
 
         <!-- Window System Controls -->
@@ -245,6 +254,14 @@
           <div id="preview-wrapper" class="preview-wrapper">
             <div id="markdown-preview" class="markdown-rendered"></div>
           </div>
+
+          <!-- Outline: the note's headings -->
+          <aside id="outline-pane" class="outline-pane" aria-labelledby="outline-title" hidden>
+            <div id="outline-title" class="outline-title">Outline</div>
+            <nav aria-labelledby="outline-title">
+              <ol id="outline-list" class="outline-list"></ol>
+            </nav>
+          </aside>
 
         </div>
 

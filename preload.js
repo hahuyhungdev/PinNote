@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 const { createMarkdownRenderer } = require('./src/lib/markdown');
-const { toggleTaskCheckbox, extractTags, flattenNoteFiles, noteTitle, resolveWikiLink, NOTE_STATUSES, getNoteStatus, setNoteStatus } = require('./src/lib/text-utils');
+const { toggleTaskCheckbox, extractTags, flattenNoteFiles, noteTitle, resolveWikiLink, NOTE_STATUSES, getNoteStatus, setNoteStatus, extractHeadings } = require('./src/lib/text-utils');
 
 // Rendering happens here, in the isolated preload world, so the page never needs Node access.
 // The renderer sanitizes with DOMPurify before HTML ever reaches the page.
@@ -83,6 +83,7 @@ const markdown = {
   flattenNoteFiles: (items) => flattenNoteFiles(items),
   noteTitle: (name) => noteTitle(name),
   resolveWikiLink: (files, link) => resolveWikiLink(files, link),
+  extractHeadings: (text) => extractHeadings(String(text ?? '')),
   statuses: [...NOTE_STATUSES],
   getNoteStatus: (text) => getNoteStatus(String(text ?? '')),
   setNoteStatus: (text, status) => setNoteStatus(String(text ?? ''), status ?? null)
