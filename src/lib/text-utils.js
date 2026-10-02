@@ -9,12 +9,80 @@ const FENCE_RE = /^\s*(?:>\s*)*(```|~~~)/;
 // Same rule as marked: "[ ]" only renders as a checkbox when a space follows it
 const TASK_LINE_RE = /^(\s*(?:>\s*)*)([-*+]|\d+[.)])\s+\[[ xX]\](?= )/;
 
+// ==========================================
+// YAML front-matter & note status
+// ==========================================
+
+const NOTE_STATUSES = ['todo', 'doing', 'waiting', 'done'];
+
+const STATUS_ALIASES = {
+  todo: 'todo', 'to do': 'todo', 'to-do': 'todo',
+  doing: 'doing', 'in progress': 'doing', 'in-progress': 'doing',
+  waiting: 'waiting', blocked: 'waiting',
+  done: 'done', complete: 'done', completed: 'done'
+};
+
+const FRONTMATTER_RE = /^(\uFEFF?)---[ \t]*\r?\n([\s\S]*?)(?:^|\r?\n)(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/;
+const STATUS_LINE_RE = /^status[ \t]*:[ \t]*(.*?)[ \t]*$/im;
+
+/** Length of a leading YAML front-matter block (0 when there is none) */
+function frontmatterLength(text) {
+  const match = FRONTMATTER_RE.exec(String(text ?? ''));
+  return match ? match[0].length : 0;
+}
+
+function getNoteStatus(text) {
+  const match = FRONTMATTER_RE.exec(String(text ?? ''));
+  const line = match && STATUS_LINE_RE.exec(match[2]);
+  if (!line) return null;
+  const value = line[1].replace(/^["']|["']$/g, '').trim().toLowerCase();
+  return STATUS_ALIASES[value] || null;
+}
+
 /**
- * Yield [lineIndex, line] for every line that is not inside a fenced code block
+ * Return `text` with its front-matter `status:` set to `status`, or removed when it is null.
+ * Other front-matter properties and the note's line endings are left as they are.
+ */
+function setNoteStatus(text, status) {
+  if (status !== null && !NOTE_STATUSES.includes(status)) throw new Error(`Unknown status: ${status}`);
+  const source = String(text ?? '');
+  const eol = source.includes('\r\n') ? '\r\n' : '\n';
+  const match = FRONTMATTER_RE.exec(source);
+
+  if (!match) {
+    return status ? `---${eol}status: ${status}${eol}---${eol}${source}` : source;
+  }
+
+  const [block, bom, inner] = match;
+  const rest = source.slice(block.length);
+  const lines = inner === '' ? [] : inner.split(/\r?\n/);
+  const idx = lines.findIndex(l => STATUS_LINE_RE.test(l));
+
+  if (status === null) {
+    if (idx === -1) return source;
+    lines.splice(idx, 1);
+  } else if (idx === -1) {
+    lines.unshift(`status: ${status}`);
+  } else {
+    lines[idx] = `status: ${status}`;
+  }
+
+  if (lines.length === 0) return bom + rest;
+  return `${bom}---${eol}${lines.join(eol)}${eol}---${eol}${rest}`;
+}
+
+/**
+ * Yield [lineIndex, line] for every line that is not inside front-matter or a fenced code block
  */
 function* linesOutsideFences(lines) {
   let fence = null;
-  for (let i = 0; i < lines.length; i++) {
+  // Skip a leading front-matter block: its lines are properties, not note text
+  let first = 0;
+  if (/^\uFEFF?---[ \t]*\r?$/.test(lines[0] ?? '')) {
+    const close = lines.findIndex((l, i) => i > 0 && /^(?:---|\.\.\.)[ \t]*\r?$/.test(l));
+    if (close !== -1) first = close + 1;
+  }
+  for (let i = first; i < lines.length; i++) {
     const match = lines[i].match(FENCE_RE);
     if (match) {
       if (!fence) fence = match[1];
@@ -145,5 +213,9 @@ module.exports = {
   sanitizeNoteName,
   isPathInside,
   findNoteByTitle,
-  resolveWikiLink
+  resolveWikiLink,
+  NOTE_STATUSES,
+  getNoteStatus,
+  setNoteStatus,
+  frontmatterLength
 };

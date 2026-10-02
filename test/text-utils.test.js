@@ -10,7 +10,11 @@ const {
   sanitizeNoteName,
   isPathInside,
   findNoteByTitle,
-  resolveWikiLink
+  resolveWikiLink,
+  NOTE_STATUSES,
+  getNoteStatus,
+  setNoteStatus,
+  frontmatterLength
 } = require('../src/lib/text-utils');
 
 test('toggleTaskCheckbox skips task-like lines inside fenced code blocks', () => {
@@ -142,4 +146,45 @@ test('resolveWikiLink prefers a title containing # and ignores pure anchors', ()
   assert.deepEqual(resolveWikiLink(files, 'New#Part'), { note: null, title: 'New' });
   assert.deepEqual(resolveWikiLink(files, '#Heading'), { note: null, title: null });
   assert.deepEqual(resolveWikiLink(files, '  '), { note: null, title: null });
+});
+
+test('NOTE_STATUSES lists the four statuses in workflow order', () => {
+  assert.deepEqual(NOTE_STATUSES, ['todo', 'doing', 'waiting', 'done']);
+});
+
+test('getNoteStatus reads status from YAML front-matter only', () => {
+  assert.equal(getNoteStatus('---\nstatus: todo\n---\n# A'), 'todo');
+  assert.equal(getNoteStatus('---\ntitle: x\nStatus: "Doing"\n---\nbody'), 'doing');
+  assert.equal(getNoteStatus('\uFEFF---\r\nstatus: waiting\r\n---\r\nbody'), 'waiting');
+  assert.equal(getNoteStatus('---\nstatus: in progress\n---\n'), 'doing');
+  assert.equal(getNoteStatus('---\nstatus: to do\n---\n'), 'todo');
+  assert.equal(getNoteStatus('---\nstatus: whatever\n---\n'), null);
+  assert.equal(getNoteStatus('# A\nstatus: done'), null, 'not front-matter');
+  assert.equal(getNoteStatus('---\nstatus: done\nno closing fence'), null);
+  assert.equal(getNoteStatus(''), null);
+});
+
+test('setNoteStatus adds, replaces and removes the status line', () => {
+  assert.equal(setNoteStatus('# A\n', 'todo'), '---\nstatus: todo\n---\n# A\n');
+  assert.equal(setNoteStatus('---\nstatus: todo\n---\n# A\n', 'done'), '---\nstatus: done\n---\n# A\n');
+  assert.equal(setNoteStatus('---\ntitle: x\n---\n# A', 'doing'), '---\nstatus: doing\ntitle: x\n---\n# A');
+  // Removing the only property drops the whole header; other properties are kept
+  assert.equal(setNoteStatus('---\nstatus: todo\n---\n# A\n', null), '# A\n');
+  assert.equal(setNoteStatus('---\ntitle: x\nstatus: todo\n---\n# A', null), '---\ntitle: x\n---\n# A');
+  assert.equal(setNoteStatus('# A', null), '# A');
+  // Windows line endings are preserved
+  assert.equal(setNoteStatus('# A\r\nbody', 'waiting'), '---\r\nstatus: waiting\r\n---\r\n# A\r\nbody');
+  assert.throws(() => setNoteStatus('# A', 'bogus'));
+});
+
+test('frontmatterLength measures the header so it can be hidden or skipped', () => {
+  assert.equal(frontmatterLength('---\nstatus: todo\n---\n# A'), '---\nstatus: todo\n---\n'.length);
+  assert.equal(frontmatterLength('# A\n---\nx\n---\n'), 0);
+  assert.equal(frontmatterLength('---\nunterminated'), 0);
+});
+
+test('tasks and tags inside front-matter are ignored', () => {
+  const md = '---\nstatus: todo\nnote: "#nottag"\n---\n- [ ] real #tag';
+  assert.deepEqual(extractTags(md), ['#tag']);
+  assert.match(toggleTaskCheckbox(md, 0, true), /- \[x\] real/);
 });

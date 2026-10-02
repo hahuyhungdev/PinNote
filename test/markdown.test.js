@@ -153,3 +153,11 @@ test('toggleTaskCheckbox index always matches the rendered checkbox order', () =
     }
   }
 });
+
+test('YAML front-matter is hidden from the preview', () => {
+  const dom = toDom(render('---\nstatus: todo\n---\n# Title\n\n- [ ] a'));
+  assert.equal(dom.querySelector('hr'), null);
+  assert.doesNotMatch(dom.textContent, /status/);
+  assert.equal(dom.querySelector('h1').textContent, 'Title');
+  assert.equal(dom.querySelectorAll('input[data-task]').length, 1);
+});

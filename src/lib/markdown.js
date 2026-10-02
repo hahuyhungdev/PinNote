@@ -8,6 +8,7 @@ const { Marked } = require('marked');
 const hljs = require('highlight.js');
 const katex = require('katex');
 const createDOMPurify = require('dompurify');
+const { frontmatterLength } = require('./text-utils');
 
 const CALLOUT_TYPES = ['NOTE', 'TIP', 'WARNING', 'CAUTION', 'IMPORTANT'];
 const CALLOUT_ICONS = {
@@ -159,7 +160,8 @@ function createMarkdownRenderer(window) {
 
   function render(rawMarkdown) {
     if (!rawMarkdown) return '';
-    const html = md.parse(rawMarkdown);
+    // Front-matter (e.g. "status: todo") is metadata, shown in the toolbar rather than the preview
+    const html = md.parse(rawMarkdown.slice(frontmatterLength(rawMarkdown)));
     return purify.sanitize(html, {
       FORBID_TAGS: ['style', 'form', 'button', 'textarea', 'select', 'option', 'iframe', 'object', 'embed'],
       FORBID_ATTR: ['formaction', 'srcdoc', 'id', 'name']
