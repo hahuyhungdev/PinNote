@@ -69,6 +69,10 @@ const api = {
   gitGuardWrite: (vaultPath, text) => invoke('git-guard-write', vaultPath, text),
   onVaultFilesChanged: (callback) => on('vault-files-changed', callback),
 
+  // Spelling fix (Ctrl + Space)
+  spellFindFix: (words) => invoke('spell-find-fix', words),
+  spellLearnWord: (word) => invoke('spell-learn-word', word),
+
   // Cross-window event listeners
   onFileSavedExternally: (callback) => on('file-saved-externally', callback),
   onFileRenamedExternally: (callback) => on('file-renamed-externally', callback),

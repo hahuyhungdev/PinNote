@@ -6,6 +6,7 @@
 import { renderMarkdown, extractTags, enhancePreview, flattenNoteFiles, noteTitle, resolveWikiLink, getNoteStatus, setNoteStatus } from './modules/preview.js';
 import { STATUS_FILTERS, countByStatus, findFolder, folderTrail } from './modules/note-filter.js';
 import { setupSmartEditor, insertFormat } from './modules/smart-editor.js';
+import { setupSpellFix } from './modules/spell-fix.js';
 import { recordNoteSnapshot } from './modules/history.js';
 import { HistoryModal } from './modules/history-modal.js';
 import { NoteManager, getDefaultNoteName } from './modules/note-manager.js';
@@ -183,6 +184,7 @@ async function initApp() {
 
   setupEventListeners();
   setupSmartEditor(dom.markdownInput, { onSave: () => saveCurrentNote(true) });
+  setupSpellFix(dom.markdownInput);
   setupCrossWindowSync();
 
   // Load Vault & Notes
