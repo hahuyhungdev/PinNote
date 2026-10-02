@@ -9,7 +9,8 @@
     "build:portable": "electron-builder --win portable",
     "build:dir": "electron-builder --win dir",
     "package": "electron-packager . PinNote --platform=win32 --arch=x64 --out=dist --overwrite",
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:e2e": "node --test --test-concurrency=1 \"test/e2e/*.e2e.js\""
   },
   "keywords": [
     "markdown",
@@ -61,6 +62,7 @@
     "@electron/packager": "^20.3.0",
     "electron": "^29.1.5",
     "electron-builder": "^26.15.3",
-    "jsdom": "^25.0.1"
+    "jsdom": "^25.0.1",
+    "playwright-core": "^1.63.0"
   }
 }

@@ -45,7 +45,10 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
+    // Sticky notes keep the process alive after the main window closes; relaunching brings it back
+    if (!mainWindow) {
+      if (app.isReady()) createMainWindow();
+    } else {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
       mainWindow.setAlwaysOnTop(true);
