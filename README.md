@@ -30,6 +30,7 @@ An elegant, lightweight Obsidian-inspired Markdown note-taking app with detached
 - **Date-Month Default Naming**: New notes automatically default to the current date and month (e.g. `16-09.md`).
 - **Quick Switcher**: Instant fuzzy search across all notes with keyboard navigation (`Ctrl + K`).
 - **Synchronized Scrolling**: Dual-pane editor and preview scroll in harmony.
+- **Note Status**: Mark a note **To do**, **Doing**, **Waiting** or **Done** from the picker next to its name. The status is saved in the note's YAML front-matter (`status: todo`), so it travels with the file and Obsidian reads it as a property; the preview hides it. Sidebar badges show each note's status, and the **Open** filter lists only notes still To do, Doing or Waiting, so nothing gets forgotten.
 - **Resizable Sidebar**: Drag the sidebar edge (or focus it and use `←` / `→`); double-click resets the width. The width is remembered.
 
 ---

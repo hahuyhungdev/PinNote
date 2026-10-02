@@ -3,7 +3,8 @@
  * High-leverage coordinator binding Vault Management, Smart Editor, Note History, and Floating Sticky Notes
  */
 
-import { renderMarkdown, extractTags, enhancePreview, flattenNoteFiles, noteTitle, resolveWikiLink } from './modules/preview.js';
+import { renderMarkdown, extractTags, enhancePreview, flattenNoteFiles, noteTitle, resolveWikiLink, getNoteStatus, setNoteStatus } from './modules/preview.js';
+import { isOpenStatus } from './modules/note-status.js';
 import { setupSmartEditor, insertFormat } from './modules/smart-editor.js';
 import { recordNoteSnapshot } from './modules/history.js';
 import { HistoryModal } from './modules/history-modal.js';
@@ -20,7 +21,8 @@ const state = {
   saveTimeout: null,
   renderFrame: null,
   tagSearchToken: 0,
-  openToken: 0
+  openToken: 0,
+  statusFilter: localStorage.getItem('pinnote_status_filter') === 'open' ? 'open' : 'all'
 };
 
 const $ = (id) => document.getElementById(id);
@@ -54,10 +56,15 @@ const dom = {
   noteSearchInput: $('note-search-input'),
   btnClearSearch: $('btn-clear-search'),
   noteTree: $('note-tree'),
+  filterAll: $('filter-all'),
+  filterOpen: $('filter-open'),
+  countAll: $('count-all'),
+  countOpen: $('count-open'),
   tagCloud: $('tag-cloud'),
 
   // Note Info & Status
   activeNoteBadge: $('active-note-badge'),
+  noteStatus: $('note-status'),
   saveStatusIndicator: $('save-status-indicator'),
   btnNoteHistory: $('btn-note-history'),
   btnPopoutNote: $('btn-popout-note'),
@@ -114,6 +121,7 @@ async function initApp() {
         clearTimeout(state.saveTimeout);
         dom.markdownInput.value = restoredContent;
         state.isDirty = false;
+        syncStatusFromEditor();
         schedulePreviewUpdate();
         updateStats();
         setSaveStatus('Restored', 'saved');
@@ -196,8 +204,76 @@ async function renderTreeUI() {
       onPinToggle: () => renderTreeUI(),
       onRename: (oldPath, newPath) => handleRenamed(oldPath, newPath)
     },
-    tagMatches
+    { tagMatches, openOnly: state.statusFilter === 'open' }
   );
+  updateStatusCounts();
+}
+
+// ==========================================
+// NOTE STATUS (stored in each note's front-matter)
+// ==========================================
+
+function updateStatusCounts() {
+  const files = allFiles();
+  dom.countAll.textContent = String(files.length);
+  dom.countOpen.textContent = String(files.filter(f => isOpenStatus(f.status)).length);
+}
+
+function setStatusFilter(filter) {
+  state.statusFilter = filter;
+  localStorage.setItem('pinnote_status_filter', filter);
+  dom.filterAll.setAttribute('aria-pressed', String(filter === 'all'));
+  dom.filterOpen.setAttribute('aria-pressed', String(filter === 'open'));
+  renderTreeUI();
+}
+
+// Walks state.notesTree itself: allFiles() comes back through the preload bridge as copies
+function findTreeFile(items, filePath) {
+  for (const item of items) {
+    if (item.type === 'file' && item.path === filePath) return item;
+    const found = item.type === 'directory' && findTreeFile(item.children || [], filePath);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Record a note's status in the cached tree; re-render the sidebar only when it changed */
+function applyStatusToTree(filePath, status) {
+  const file = findTreeFile(state.notesTree, filePath);
+  if (!file || file.status === status) return;
+  file.status = status;
+  renderTreeUI();
+}
+
+function renderStatusPicker(status) {
+  dom.noteStatus.value = status || '';
+  dom.noteStatus.parentElement.dataset.status = status || '';
+}
+
+/** The editor text is the source of truth: reflect its front-matter in the picker and sidebar */
+function syncStatusFromEditor() {
+  if (!state.activeNotePath) return;
+  const status = getNoteStatus(dom.markdownInput.value);
+  renderStatusPicker(status);
+  applyStatusToTree(state.activeNotePath, status);
+}
+
+function setActiveStatus(status) {
+  if (!state.activeNotePath) return;
+  const el = dom.markdownInput;
+  const before = el.value;
+  const next = setNoteStatus(before, status || null);
+  if (next !== before) {
+    // The header sits above the text, so shift the cursor by however much it grew or shrank
+    const delta = next.length - before.length;
+    const { selectionStart, selectionEnd } = el;
+    el.value = next;
+    el.setSelectionRange(Math.max(0, selectionStart + delta), Math.max(0, selectionEnd + delta));
+    queueAutoSave();
+    updateStats();
+    schedulePreviewUpdate();
+  }
+  syncStatusFromEditor();
 }
 
 function handleRenamed(oldPath, newPath) {
@@ -213,6 +289,8 @@ function setActiveNoteUI(filePath) {
   dom.activeNoteBadge.textContent = filePath ? fileName(filePath) : 'No note open';
   dom.activeNoteBadge.title = filePath ? `${filePath}\nClick to rename` : '';
   document.title = filePath ? `${noteTitle(fileName(filePath))} — PinNote` : 'PinNote';
+  dom.noteStatus.disabled = !filePath;
+  if (!filePath) renderStatusPicker(null);
 }
 
 async function openNote(filePath) {
@@ -239,6 +317,7 @@ async function openNote(filePath) {
     dom.markdownInput.value = content || '';
     dom.markdownInput.scrollTop = 0;
     setActiveNoteUI(filePath);
+    syncStatusFromEditor();
     setSaveStatus('Saved', 'saved');
 
     updatePreviewNow();
@@ -413,6 +492,8 @@ function updateStats() {
 
 function setupCrossWindowSync() {
   window.pinNoteAPI.onFileSavedExternally((filePath, content) => {
+    // Sticky windows edit notes too; keep their sidebar badge current
+    if (state.activeNotePath !== filePath) applyStatusToTree(filePath, getNoteStatus(content));
     if (state.activeNotePath !== filePath || state.isDirty || dom.markdownInput.value === content) return;
     const { selectionStart, selectionEnd, scrollTop } = dom.markdownInput;
     dom.markdownInput.value = content;
@@ -420,6 +501,7 @@ function setupCrossWindowSync() {
     dom.markdownInput.scrollTop = scrollTop;
     updatePreviewNow();
     updateStats();
+    syncStatusFromEditor();
   });
 
   window.pinNoteAPI.onFileRenamedExternally((oldPath, newPath) => {
@@ -512,7 +594,15 @@ function setupEventListeners() {
     queueAutoSave();
     schedulePreviewUpdate();
     updateStats();
+    syncStatusFromEditor();
   });
+
+  // Note status picker & sidebar status filter
+  dom.noteStatus.addEventListener('change', () => setActiveStatus(dom.noteStatus.value));
+  dom.filterAll.addEventListener('click', () => setStatusFilter('all'));
+  dom.filterOpen.addEventListener('click', () => setStatusFilter('open'));
+  dom.filterAll.setAttribute('aria-pressed', String(state.statusFilter === 'all'));
+  dom.filterOpen.setAttribute('aria-pressed', String(state.statusFilter === 'open'));
 
   // Formatting Toolbar Buttons
   document.querySelectorAll('.fmt-btn[data-fmt]').forEach(btn => {

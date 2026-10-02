@@ -13,6 +13,8 @@ export const extractTags = (text) => md().extractTags(text);
 export const flattenNoteFiles = (items) => md().flattenNoteFiles(items);
 export const noteTitle = (name) => md().noteTitle(name);
 export const resolveWikiLink = (files, link) => md().resolveWikiLink(files, link);
+export const getNoteStatus = (text) => md().getNoteStatus(text);
+export const setNoteStatus = (text, status) => md().setNoteStatus(text, status);
 
 /**
  * Attach copy buttons to all <pre> code blocks in a rendered container

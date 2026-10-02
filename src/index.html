@@ -27,6 +27,16 @@
         </svg>
         <span class="brand-title">PinNote</span>
         <span id="active-note-badge" class="note-badge clickable-badge" role="button" tabindex="0" title="Click to rename">Untitled.md</span>
+        <label class="status-picker" data-status="" title="Note status — saved in the note's front-matter">
+          <select id="note-status" aria-label="Note status">
+            <option value="">No status</option>
+            <option value="todo">To do</option>
+            <option value="doing">Doing</option>
+            <option value="waiting">Waiting</option>
+            <option value="done">Done</option>
+          </select>
+          <svg class="status-chevron" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </label>
       </div>
 
       <!-- Quick Actions & Toolbar -->
@@ -135,6 +145,12 @@
           </svg>
           <input type="search" id="note-search-input" placeholder="Search notes or #tag" aria-label="Search notes or tags">
           <button id="btn-clear-search" class="clear-search-btn" title="Clear search" aria-label="Clear search" hidden>&times;</button>
+        </div>
+
+        <!-- Status Filter -->
+        <div class="status-filter" role="group" aria-label="Filter notes by status">
+          <button type="button" id="filter-all" class="filter-btn" aria-pressed="true">All <span id="count-all" class="filter-count">0</span></button>
+          <button type="button" id="filter-open" class="filter-btn" aria-pressed="false" title="Notes marked To do, Doing or Waiting">Open <span id="count-open" class="filter-count">0</span></button>
         </div>
 
         <!-- Note List Tree -->

@@ -4,6 +4,7 @@
  */
 
 import { flattenNoteFiles, noteTitle } from './preview.js';
+import { STATUS_LABELS, isOpenStatus } from './note-status.js';
 
 const ICONS = {
   file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
@@ -89,9 +90,11 @@ class NoteManager {
   }
 
   /**
-   * @param {Set<string>|null} tagMatches when searching by #tag, the set of matching note paths
+   * @param {object} [filters]
+   * @param {Set<string>|null} [filters.tagMatches] when searching by #tag, the set of matching note paths
+   * @param {boolean} [filters.openOnly] only list notes whose status still needs attention
    */
-  renderTree(items, container, filterQuery = '', activeNotePath = null, callbacks = {}, tagMatches = null) {
+  renderTree(items, container, filterQuery = '', activeNotePath = null, callbacks = {}, { tagMatches = null, openOnly = false } = {}) {
     if (!container) return;
     container.innerHTML = '';
     const files = flattenNoteFiles(items);
@@ -103,13 +106,17 @@ class NoteManager {
 
     const cleanQuery = filterQuery.trim().toLowerCase();
     const matchingFiles = files.filter(f => {
+      if (openOnly && !isOpenStatus(f.status)) return false;
       if (!cleanQuery) return true;
       if (tagMatches) return tagMatches.has(f.path);
       return f.name.toLowerCase().includes(cleanQuery) || (f.relativePath || '').toLowerCase().includes(cleanQuery);
     });
 
     if (matchingFiles.length === 0) {
-      container.appendChild(this._emptyState(tagMatches ? `No notes tagged ${filterQuery.trim()}` : 'No matching notes'));
+      const message = tagMatches ? `No notes tagged ${filterQuery.trim()}`
+        : cleanQuery ? 'No matching notes'
+        : 'Nothing open — every note is done or has no status';
+      container.appendChild(this._emptyState(message));
       return;
     }
 
@@ -166,6 +173,14 @@ class NoteManager {
 
     const titleSpan = itemEl.querySelector('.note-title');
     titleSpan.textContent = noteTitle(file.name);
+    if (STATUS_LABELS[file.status]) {
+      const badge = document.createElement('span');
+      badge.className = 'note-status';
+      badge.dataset.status = file.status;
+      badge.textContent = STATUS_LABELS[file.status];
+      itemEl.querySelector('.note-title-group').appendChild(badge);
+      itemEl.classList.toggle('is-done', file.status === 'done');
+    }
     if (folder) itemEl.querySelector('.note-folder').textContent = folder;
 
     itemEl.querySelector('.note-title-group').addEventListener('dblclick', (e) => {

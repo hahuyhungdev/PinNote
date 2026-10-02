@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { extractTags, flattenNoteFiles, sanitizeNoteName, isPathInside } = require('./src/lib/text-utils');
+const { extractTags, flattenNoteFiles, sanitizeNoteName, isPathInside, getNoteStatus } = require('./src/lib/text-utils');
 
 function logDebug(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
@@ -335,6 +335,22 @@ ipcMain.handle('select-vault-folder', async (event) => {
   return chosen;
 });
 
+// Status lives in front-matter at the top of the note, so only the head needs reading
+const STATUS_HEAD_BYTES = 8192;
+function readNoteStatus(filePath) {
+  let fd;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(STATUS_HEAD_BYTES);
+    const read = fs.readSync(fd, buf, 0, STATUS_HEAD_BYTES, 0);
+    return getNoteStatus(buf.toString('utf-8', 0, read));
+  } catch (e) {
+    return null;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
 // Fast recursive scanner for Markdown notes (.md & .txt)
 function scanDirectory(dirPath, rootPath = dirPath, depth = 0) {
   if (depth > 5) return []; // Guard against deeply nested structures
@@ -362,7 +378,8 @@ function scanDirectory(dirPath, rootPath = dirPath, depth = 0) {
           relativePath,
           type: 'file',
           mtime: stats.mtimeMs,
-          size: stats.size
+          size: stats.size,
+          status: readNoteStatus(fullPath)
         });
       }
     }
