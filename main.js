@@ -242,6 +242,25 @@ function assertInVault(filePath) {
   return resolved;
 }
 
+/**
+ * Confine a folder path to an open vault (the vault root itself is allowed).
+ * Hidden folders such as .pinnote/.git are never valid targets.
+ */
+function assertDirInVault(dirPath, { mustExist = true } = {}) {
+  if (typeof dirPath !== 'string' || !dirPath) throw new Error('Invalid folder');
+  const resolved = path.resolve(dirPath);
+  const real = realpathLoose(resolved);
+  const root = [...allowedRoots].find(r =>
+    (samePath(r, resolved) || isPathInside(resolved, r)) &&
+    (samePath(realpathLoose(r), real) || isPathInside(real, realpathLoose(r))));
+  if (!root) throw new Error('Folder is outside the open vault');
+  if (path.relative(root, resolved).split(/[\\/]/).some(part => part.startsWith('.'))) {
+    throw new Error('Hidden folders cannot be used');
+  }
+  if (mustExist && !isDirectory(resolved)) throw new Error('This folder no longer exists');
+  return resolved;
+}
+
 // ==========================================
 // SETTINGS (main-owned; the page cannot widen the allowed vault roots)
 // ==========================================
@@ -497,8 +516,8 @@ function readHistory(historyFile, filePath) {
 
 ipcMain.handle('get-default-note-name', () => getDefaultNoteName());
 
-ipcMain.handle('create-new-note', (event, vaultPath, filename = null) => {
-  const targetVault = resolveVault(vaultPath);
+ipcMain.handle('create-new-note', (event, vaultPath, filename = null, folder = null) => {
+  const targetVault = folder ? assertDirInVault(folder) : resolveVault(vaultPath);
   let baseName = sanitizeNoteName(String(filename || '').replace(/\.md$/i, ''));
   if (!baseName || baseName === 'Untitled') baseName = getDefaultNoteName().replace(/\.md$/, '');
 
@@ -631,6 +650,14 @@ ipcMain.handle('rename-file', (event, oldPath, newName) => {
     throw new Error(`A note named "${baseName}${ext}" already exists`);
   }
 
+  return relocateNote(oldPath, safeOld, newPath);
+});
+
+/**
+ * Move/rename a note file and carry its revision history, sticky window and open editors along.
+ * `oldPath` is the path as the renderer knows it; `safeOld` is its validated form.
+ */
+function relocateNote(oldPath, safeOld, newPath) {
   fs.renameSync(safeOld, newPath);
 
   // Carry revision history over to the new file name
@@ -655,6 +682,33 @@ ipcMain.handle('rename-file', (event, oldPath, newName) => {
   broadcast('file-renamed-externally', oldPath, newPath);
   broadcast('vault-tree-changed');
   return newPath;
+}
+
+ipcMain.handle('move-note', (event, filePath, targetDir) => {
+  const safeOld = assertInVault(filePath);
+  const dir = assertDirInVault(targetDir);
+  const newPath = path.join(dir, path.basename(safeOld));
+  assertInVault(newPath);
+
+  if (samePath(newPath, safeOld)) return safeOld;
+  if (fs.existsSync(newPath)) {
+    throw new Error(`A note named "${path.basename(newPath)}" already exists in "${path.basename(dir)}"`);
+  }
+  return relocateNote(filePath, safeOld, newPath);
+});
+
+ipcMain.handle('create-folder', (event, vaultPath, parentDir, name) => {
+  const parent = parentDir ? assertDirInVault(parentDir) : resolveVault(vaultPath);
+  const folderName = sanitizeNoteName(name);
+  if (!folderName) throw new Error('Please enter a valid folder name');
+
+  const target = assertDirInVault(path.join(parent, folderName), { mustExist: false });
+  // existsSync is case-insensitive on Windows, so "archive" and "Archive" collide as they should
+  if (fs.existsSync(target)) throw new Error(`A folder named "${folderName}" already exists`);
+
+  fs.mkdirSync(target);
+  broadcast('vault-tree-changed');
+  return target;
 });
 
 // ==========================================

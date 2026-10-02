@@ -64,6 +64,7 @@ const dom = {
   btnRefreshVault: $('btn-refresh-vault'),
   btnChangeVault: $('btn-change-vault'),
   btnNewNote: $('btn-new-note'),
+  btnNewFolder: $('btn-new-folder'),
   noteSearchInput: $('note-search-input'),
   btnClearSearch: $('btn-clear-search'),
   noteTree: $('note-tree'),
@@ -216,7 +217,9 @@ async function renderTreeUI() {
       onPinToggle: () => renderTreeUI(),
       onRename: (oldPath, newPath) => handleRenamed(oldPath, newPath),
       onToggleFolder: (folderPath) => toggleFolder(folderPath),
-      onScopeFolder: (folderPath) => setFolderScope(folderPath)
+      onScopeFolder: (folderPath) => setFolderScope(folderPath),
+      onNewNoteIn: (folderPath) => createNewNote(null, folderPath),
+      onNewFolderIn: (folderPath) => createFolder(folderPath)
     },
     { tagMatches, status: state.statusFilter, scope: state.folderScope, collapsed: state.collapsedFolders }
   );
@@ -232,6 +235,34 @@ function toggleFolder(folderPath) {
   else state.collapsedFolders.add(folderPath);
   localStorage.setItem('pinnote_collapsed_folders', JSON.stringify([...state.collapsedFolders]));
   renderTreeUI();
+}
+
+async function createFolder(parentPath = state.folderScope) {
+  // Make sure the parent is open so the name input appears inside it
+  if (parentPath && state.collapsedFolders.has(parentPath)) {
+    state.collapsedFolders.delete(parentPath);
+    localStorage.setItem('pinnote_collapsed_folders', JSON.stringify([...state.collapsedFolders]));
+    await renderTreeUI();
+  }
+  const name = await noteManager.promptFolderName(dom.noteTree, parentPath);
+  if (!name) return;
+  try {
+    await window.pinNoteAPI.createFolder(state.currentVaultPath, parentPath, name);
+    await refreshVault();
+  } catch (err) {
+    alert(`Could not create folder: ${err.message}`);
+  }
+}
+
+async function moveNote(filePath, targetDir) {
+  // A pending autosave would otherwise target the old location after the move
+  if (filePath === state.activeNotePath && state.isDirty) await saveCurrentNote(true);
+  try {
+    const newPath = await noteManager.moveNote(filePath, targetDir);
+    if (newPath !== filePath) handleRenamed(filePath, newPath);
+  } catch (err) {
+    alert(`Could not move note: ${err.message}`);
+  }
 }
 
 /** Narrow the sidebar to one folder (and its subfolders); null shows the whole vault */
@@ -408,9 +439,10 @@ function queueAutoSave() {
   state.saveTimeout = setTimeout(() => saveCurrentNote(false), 500);
 }
 
-async function createNewNote(customTitle = null) {
+// New notes go into the focused folder unless a folder is given
+async function createNewNote(customTitle = null, folder = state.folderScope) {
   try {
-    const created = await noteManager.createNote(state.currentVaultPath, customTitle || getDefaultNoteName());
+    const created = await noteManager.createNote(state.currentVaultPath, customTitle || getDefaultNoteName(), folder);
     await refreshVault();
     openNote(created.filePath);
   } catch (err) {
@@ -611,6 +643,11 @@ function setupEventListeners() {
 
   dom.btnRefreshVault.addEventListener('click', () => refreshVault());
   dom.btnNewNote.addEventListener('click', () => createNewNote());
+  dom.btnNewFolder.addEventListener('click', () => createFolder());
+  noteManager.enableNoteDrops(dom.noteTree, {
+    getRootPath: () => state.folderScope || state.currentVaultPath,
+    onMoveNote: (filePath, targetDir) => moveNote(filePath, targetDir)
+  });
 
   // Search Filter in Sidebar
   dom.noteSearchInput.addEventListener('input', (e) => setSearch(e.target.value, { debounce: true }));

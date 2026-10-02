@@ -16,8 +16,13 @@ const ICONS = {
   folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
   folderOpen: '<path d="M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6A2 2 0 0 1 18.45 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2"/>',
   focus: '<circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>',
+  filePlus: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/>',
+  folderPlus: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>',
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>'
 };
+
+// Drag payload type for moving notes between folders
+const NOTE_DRAG_TYPE = 'application/x-pinnote-note';
 
 const icon = (name, size = 16) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -71,8 +76,14 @@ class NoteManager {
     this._persistPinned();
   }
 
-  async createNote(vaultPath, customTitle = null) {
-    return await window.pinNoteAPI.createNewNote(vaultPath, customTitle || getDefaultNoteName());
+  async createNote(vaultPath, customTitle = null, folder = null) {
+    return await window.pinNoteAPI.createNewNote(vaultPath, customTitle || getDefaultNoteName(), folder);
+  }
+
+  async moveNote(filePath, targetDir) {
+    const newPath = await window.pinNoteAPI.moveNote(filePath, targetDir);
+    this.updatePinnedPath(filePath, newPath);
+    return newPath;
   }
 
   async readNote(filePath) {
@@ -102,9 +113,21 @@ class NoteManager {
    * @param {string|null} [view.scope] folder path the sidebar is narrowed to
    * @param {Set<string>} [view.collapsed] folder paths the user collapsed
    */
-  renderTree(items, container, filterQuery = '', activeNotePath = null, callbacks = {},
-    { tagMatches = null, status = 'all', scope = null, collapsed = new Set() } = {}) {
+  renderTree(items, container, ...args) {
     if (!container) return;
+    // A folder name being typed must survive re-renders (autosave, other windows, vault refresh)
+    const prompt = this._folderPrompt;
+    if (prompt) prompt.detaching = true;
+    this._renderTreeContent(items, container, ...args);
+    if (prompt && this._folderPrompt === prompt) {
+      this._placeFolderPrompt(container, prompt);
+      prompt.detaching = false;
+      prompt.input.focus();
+    }
+  }
+
+  _renderTreeContent(items, container, filterQuery = '', activeNotePath = null, callbacks = {},
+    { tagMatches = null, status = 'all', scope = null, collapsed = new Set() } = {}) {
     container.innerHTML = '';
 
     if (flattenNoteFiles(items).length === 0 && !items.some(i => i.type === 'directory')) {
@@ -173,6 +196,8 @@ class NoteManager {
       <span class="folder-name"></span>
       <span class="folder-count"></span>
       <div class="folder-actions">
+        <button type="button" class="note-btn" data-action="new-note" title="New note in this folder">${icon('filePlus', 15)}</button>
+        <button type="button" class="note-btn" data-action="new-folder" title="New folder inside">${icon('folderPlus', 15)}</button>
         <button type="button" class="note-btn" data-action="scope" title="Show only this folder">${icon('focus', 15)}</button>
       </div>
     `;
@@ -185,6 +210,8 @@ class NoteManager {
       if (!action) return toggle();
       e.stopPropagation();
       if (action === 'scope') ctx.callbacks.onScopeFolder?.(folder.path);
+      else if (action === 'new-note') ctx.callbacks.onNewNoteIn?.(folder.path);
+      else if (action === 'new-folder') ctx.callbacks.onNewFolderIn?.(folder.path);
     });
     row.addEventListener('keydown', (e) => {
       if (e.target !== row) return;
@@ -223,6 +250,13 @@ class NoteManager {
     itemEl.className = `note-item${activeNotePath === file.path ? ' active' : ''}${isPinned ? ' pinned-note-item' : ''}`;
     itemEl.tabIndex = 0;
     itemEl.style.setProperty('--depth', depth);
+    itemEl.draggable = true;
+    itemEl.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData(NOTE_DRAG_TYPE, file.path);
+      e.dataTransfer.effectAllowed = 'move';
+      itemEl.classList.add('dragging');
+    });
+    itemEl.addEventListener('dragend', () => itemEl.classList.remove('dragging'));
 
     // Inside the folder tree the location is already visible; flat lists show it under the title
     const folder = showFolder ? (file.relativePath || '').split(/[/\\]/).slice(0, -1).join(' / ') : '';
@@ -281,6 +315,107 @@ class NoteManager {
     });
 
     container.appendChild(itemEl);
+  }
+
+  /**
+   * Make the tree a drop zone for dragged notes: a folder row or anything inside a folder targets
+   * that folder; empty space targets `getRootPath()` (the vault root or the focused folder).
+   * Listeners live on the container, so they survive every re-render.
+   */
+  enableNoteDrops(treeEl, { getRootPath, onMoveNote }) {
+    const targetOf = (e) => {
+      const folderNode = e.target.closest?.('.folder-node');
+      return folderNode
+        ? { path: folderNode.dataset.path, highlight: folderNode.querySelector(':scope > .folder-item') }
+        : { path: getRootPath(), highlight: treeEl };
+    };
+    const clear = () => {
+      treeEl.classList.remove('drop-target');
+      treeEl.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));
+    };
+
+    treeEl.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer.types.includes(NOTE_DRAG_TYPE)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const { highlight } = targetOf(e);
+      if (!highlight.classList.contains('drop-target')) {
+        clear();
+        highlight.classList.add('drop-target');
+      }
+    });
+    treeEl.addEventListener('dragleave', (e) => {
+      if (!treeEl.contains(e.relatedTarget)) clear();
+    });
+    treeEl.addEventListener('drop', (e) => {
+      const notePath = e.dataTransfer.getData(NOTE_DRAG_TYPE);
+      clear();
+      if (!notePath) return;
+      e.preventDefault();
+      onMoveNote(notePath, targetOf(e).path);
+    });
+  }
+
+  /**
+   * Show an inline name input at the top of `parentPath` (or of the list) and resolve with the
+   * typed name, or null when cancelled.
+   */
+  promptFolderName(treeEl, parentPath) {
+    return new Promise((resolve) => {
+      const row = document.createElement('div');
+      row.className = 'folder-item new-folder-row';
+      row.innerHTML = `<span class="folder-chevron"></span><span class="folder-icon">${icon('folderPlus', 15)}</span>`;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'new-folder-input';
+      input.placeholder = 'Folder name';
+      input.setAttribute('aria-label', 'New folder name');
+      row.appendChild(input);
+
+      const prompt = { parentPath, row, input, detaching: false };
+      this._folderPrompt?.cancel?.();
+      this._folderPrompt = prompt;
+      this._placeFolderPrompt(treeEl, prompt);
+      input.focus();
+
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        if (this._folderPrompt === prompt) this._folderPrompt = null;
+        row.remove();
+        resolve(value);
+      };
+      prompt.cancel = () => finish(null);
+      input.addEventListener('click', (e) => e.stopPropagation());
+      input.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); finish(input.value.trim() || null); }
+        else if (e.key === 'Escape') { e.preventDefault(); finish(null); }
+      });
+      // Losing focus commits, except when a re-render briefly detaches the row
+      input.addEventListener('blur', () => {
+        if (!prompt.detaching) finish(input.value.trim() || null);
+      });
+    });
+  }
+
+  /** Insert the folder-name row at the top of its parent folder, or of the list for the root */
+  _placeFolderPrompt(treeEl, prompt) {
+    const parentNode = prompt.parentPath && [...treeEl.querySelectorAll('.folder-node')].find(n => n.dataset.path === prompt.parentPath);
+    const host = parentNode?.querySelector(':scope > .folder-children');
+    const depth = parentNode
+      ? Number(parentNode.querySelector(':scope > .folder-item').style.getPropertyValue('--depth') || 0) + 1
+      : 0;
+    prompt.row.style.setProperty('--depth', depth);
+
+    if (host) {
+      host.prepend(prompt.row);
+    } else {
+      const titles = treeEl.querySelectorAll(':scope > .section-title');
+      if (titles.length) titles[titles.length - 1].after(prompt.row);
+      else treeEl.prepend(prompt.row);
+    }
   }
 
   /**

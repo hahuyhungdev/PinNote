@@ -31,6 +31,7 @@ An elegant, lightweight Obsidian-inspired Markdown note-taking app with detached
 - **Quick Switcher**: Instant fuzzy search across all notes with keyboard navigation (`Ctrl + K`).
 - **Synchronized Scrolling**: Dual-pane editor and preview scroll in harmony.
 - **Note Status**: Mark a note **To do**, **Doing**, **Waiting** or **Done** from the picker next to its name. The status is saved in the note's YAML front-matter (`status: todo`), so it travels with the file and Obsidian reads it as a property; the preview hides it. Sidebar badges show each note's status, and the **Open** filter lists only notes still To do, Doing or Waiting, so nothing gets forgotten.
+- **Folders & Filters**: Notes are shown inside their folders (real folders on disk, nested as deep as you like), with note counts; click a folder to collapse it. Status chips (**All**, **Open**, **To do**, **Doing**, **Waiting**, **Done**) filter the tree, and *Show only this folder* narrows everything — tree, counts and new notes — to one folder, so "Work + Waiting" is two clicks. Create folders from the sidebar header or a folder's hover actions, and drag a note onto a folder (or the empty list area for the root) to move it; its revision history, pin and open sticky window move with it.
 - **Resizable Sidebar**: Drag the sidebar edge (or focus it and use `←` / `→`); double-click resets the width. The width is remembered.
 
 ---
