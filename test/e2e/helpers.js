@@ -17,8 +17,15 @@ function makeSandbox(notes = {}) {
   const vault = path.join(root, 'vault');
   fs.mkdirSync(userData, { recursive: true });
   fs.mkdirSync(vault, { recursive: true });
+  // "Folder/Note.md" creates the folder too; a key ending in "/" is an empty folder
   for (const [name, content] of Object.entries(notes)) {
-    fs.writeFileSync(path.join(vault, name), content, 'utf-8');
+    const target = path.join(vault, name);
+    if (name.endsWith('/')) {
+      fs.mkdirSync(target, { recursive: true });
+      continue;
+    }
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, content, 'utf-8');
   }
   fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ vaultPath: vault }), 'utf-8');
 
@@ -29,6 +36,7 @@ function makeSandbox(notes = {}) {
     args: [APP_DIR, `--user-data-dir=${userData}`],
     read: (name) => fs.readFileSync(path.join(vault, name), 'utf-8'),
     exists: (name) => fs.existsSync(path.join(vault, name)),
+    isDir: (name) => fs.existsSync(path.join(vault, name)) && fs.statSync(path.join(vault, name)).isDirectory(),
     list: () => fs.readdirSync(vault).filter(f => !f.startsWith('.')).sort(),
     cleanup: () => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   };

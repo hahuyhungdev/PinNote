@@ -4,7 +4,7 @@
  */
 
 import { renderMarkdown, extractTags, enhancePreview, flattenNoteFiles, noteTitle, resolveWikiLink, getNoteStatus, setNoteStatus } from './modules/preview.js';
-import { isOpenStatus } from './modules/note-status.js';
+import { STATUS_FILTERS, countByStatus, findFolder, folderTrail } from './modules/note-filter.js';
 import { setupSmartEditor, insertFormat } from './modules/smart-editor.js';
 import { recordNoteSnapshot } from './modules/history.js';
 import { HistoryModal } from './modules/history-modal.js';
@@ -22,8 +22,19 @@ const state = {
   renderFrame: null,
   tagSearchToken: 0,
   openToken: 0,
-  statusFilter: localStorage.getItem('pinnote_status_filter') === 'open' ? 'open' : 'all'
+  statusFilter: STATUS_FILTERS.includes(localStorage.getItem('pinnote_status_filter')) ? localStorage.getItem('pinnote_status_filter') : 'all',
+  folderScope: localStorage.getItem('pinnote_folder_scope') || null,
+  collapsedFolders: new Set(readJson('pinnote_collapsed_folders', []))
 };
+
+function readJson(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key));
+    return Array.isArray(value) ? value : fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -56,10 +67,10 @@ const dom = {
   noteSearchInput: $('note-search-input'),
   btnClearSearch: $('btn-clear-search'),
   noteTree: $('note-tree'),
-  filterAll: $('filter-all'),
-  filterOpen: $('filter-open'),
-  countAll: $('count-all'),
-  countOpen: $('count-open'),
+  statusChips: [...document.querySelectorAll('.filter-btn[data-filter]')],
+  folderScope: $('folder-scope'),
+  folderScopePath: $('folder-scope-path'),
+  btnClearScope: $('btn-clear-scope'),
   tagCloud: $('tag-cloud'),
 
   // Note Info & Status
@@ -176,7 +187,8 @@ async function refreshVault() {
   dom.currentVaultPath.textContent = state.currentVaultPath;
   dom.currentVaultPath.title = state.currentVaultPath;
 
-  await renderTreeUI();
+  // Re-checks the remembered folder scope against the fresh tree and renders the sidebar
+  await setFolderScope(state.folderScope);
   updateTagsCloud();
 }
 
@@ -188,7 +200,7 @@ async function renderTreeUI() {
     const token = ++state.tagSearchToken;
     const paths = await window.pinNoteAPI.findNotesWithTag(state.currentVaultPath, query);
     if (token !== state.tagSearchToken) return; // a newer search superseded this one
-    tagMatches = new Set(paths);
+    tagMatches = paths;
   } else {
     state.tagSearchToken++;
   }
@@ -202,11 +214,36 @@ async function renderTreeUI() {
       onOpen: (path) => openNote(path),
       onDelete: (path, name) => deleteNote(path, name),
       onPinToggle: () => renderTreeUI(),
-      onRename: (oldPath, newPath) => handleRenamed(oldPath, newPath)
+      onRename: (oldPath, newPath) => handleRenamed(oldPath, newPath),
+      onToggleFolder: (folderPath) => toggleFolder(folderPath),
+      onScopeFolder: (folderPath) => setFolderScope(folderPath)
     },
-    { tagMatches, openOnly: state.statusFilter === 'open' }
+    { tagMatches, status: state.statusFilter, scope: state.folderScope, collapsed: state.collapsedFolders }
   );
   updateStatusCounts();
+}
+
+// ==========================================
+// FOLDERS (real directories in the vault)
+// ==========================================
+
+function toggleFolder(folderPath) {
+  if (state.collapsedFolders.has(folderPath)) state.collapsedFolders.delete(folderPath);
+  else state.collapsedFolders.add(folderPath);
+  localStorage.setItem('pinnote_collapsed_folders', JSON.stringify([...state.collapsedFolders]));
+  renderTreeUI();
+}
+
+/** Narrow the sidebar to one folder (and its subfolders); null shows the whole vault */
+function setFolderScope(folderPath) {
+  state.folderScope = folderPath && findFolder(state.notesTree, folderPath) ? folderPath : null;
+  if (state.folderScope) localStorage.setItem('pinnote_folder_scope', state.folderScope);
+  else localStorage.removeItem('pinnote_folder_scope');
+
+  dom.folderScope.hidden = !state.folderScope;
+  dom.folderScopePath.textContent = folderTrail(state.notesTree, state.folderScope).map(f => f.name).join(' / ');
+  dom.folderScopePath.title = state.folderScope || '';
+  return renderTreeUI();
 }
 
 // ==========================================
@@ -214,16 +251,20 @@ async function renderTreeUI() {
 // ==========================================
 
 function updateStatusCounts() {
-  const files = allFiles();
-  dom.countAll.textContent = String(files.length);
-  dom.countOpen.textContent = String(files.filter(f => isOpenStatus(f.status)).length);
+  const counts = countByStatus(state.notesTree, state.folderScope);
+  dom.statusChips.forEach(chip => {
+    chip.querySelector('.filter-count').textContent = String(counts[chip.dataset.filter]);
+  });
+}
+
+function renderStatusChips() {
+  dom.statusChips.forEach(chip => chip.setAttribute('aria-pressed', String(chip.dataset.filter === state.statusFilter)));
 }
 
 function setStatusFilter(filter) {
   state.statusFilter = filter;
   localStorage.setItem('pinnote_status_filter', filter);
-  dom.filterAll.setAttribute('aria-pressed', String(filter === 'all'));
-  dom.filterOpen.setAttribute('aria-pressed', String(filter === 'open'));
+  renderStatusChips();
   renderTreeUI();
 }
 
@@ -599,10 +640,9 @@ function setupEventListeners() {
 
   // Note status picker & sidebar status filter
   dom.noteStatus.addEventListener('change', () => setActiveStatus(dom.noteStatus.value));
-  dom.filterAll.addEventListener('click', () => setStatusFilter('all'));
-  dom.filterOpen.addEventListener('click', () => setStatusFilter('open'));
-  dom.filterAll.setAttribute('aria-pressed', String(state.statusFilter === 'all'));
-  dom.filterOpen.setAttribute('aria-pressed', String(state.statusFilter === 'open'));
+  dom.statusChips.forEach(chip => chip.addEventListener('click', () => setStatusFilter(chip.dataset.filter)));
+  renderStatusChips();
+  dom.btnClearScope.addEventListener('click', () => setFolderScope(null));
 
   // Formatting Toolbar Buttons
   document.querySelectorAll('.fmt-btn[data-fmt]').forEach(btn => {

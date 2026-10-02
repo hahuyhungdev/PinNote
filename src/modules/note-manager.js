@@ -4,13 +4,18 @@
  */
 
 import { flattenNoteFiles, noteTitle } from './preview.js';
-import { STATUS_LABELS, isOpenStatus } from './note-status.js';
+import { STATUS_LABELS } from './note-status.js';
+import { buildTreeView } from './note-filter.js';
 
 const ICONS = {
   file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
   popout: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
   rename: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   pin: '<line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-2l-2-2V5a2 2 0 0 0-2-2h-6a2 2 0 0 0-2 2v8l-2 2v2z"/>',
+  chevron: '<polyline points="9 6 15 12 9 18"/>',
+  folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+  folderOpen: '<path d="M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6A2 2 0 0 1 18.45 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2"/>',
+  focus: '<circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>',
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>'
 };
 
@@ -90,48 +95,113 @@ class NoteManager {
   }
 
   /**
-   * @param {object} [filters]
-   * @param {Set<string>|null} [filters.tagMatches] when searching by #tag, the set of matching note paths
-   * @param {boolean} [filters.openOnly] only list notes whose status still needs attention
+   * Text search lists matches flat (with their folder); otherwise notes are shown in their folders.
+   * @param {object} [view]
+   * @param {string[]|null} [view.tagMatches] when searching by #tag, the matching note paths
+   * @param {string} [view.status] status filter: all, open, todo, doing, waiting or done
+   * @param {string|null} [view.scope] folder path the sidebar is narrowed to
+   * @param {Set<string>} [view.collapsed] folder paths the user collapsed
    */
-  renderTree(items, container, filterQuery = '', activeNotePath = null, callbacks = {}, { tagMatches = null, openOnly = false } = {}) {
+  renderTree(items, container, filterQuery = '', activeNotePath = null, callbacks = {},
+    { tagMatches = null, status = 'all', scope = null, collapsed = new Set() } = {}) {
     if (!container) return;
     container.innerHTML = '';
-    const files = flattenNoteFiles(items);
 
-    if (files.length === 0) {
+    if (flattenNoteFiles(items).length === 0 && !items.some(i => i.type === 'directory')) {
       container.appendChild(this._emptyState('No notes yet — press Ctrl+N to create one'));
       return;
     }
 
     const cleanQuery = filterQuery.trim().toLowerCase();
-    const matchingFiles = files.filter(f => {
-      if (openOnly && !isOpenStatus(f.status)) return false;
-      if (!cleanQuery) return true;
-      if (tagMatches) return tagMatches.has(f.path);
-      return f.name.toLowerCase().includes(cleanQuery) || (f.relativePath || '').toLowerCase().includes(cleanQuery);
-    });
+    const textSearch = cleanQuery && !tagMatches;
+    const tree = buildTreeView(items, { status, tagMatches, scope });
+    const ctx = { activeNotePath, callbacks };
 
-    if (matchingFiles.length === 0) {
+    const matchingFiles = flattenNoteFiles(tree).filter(f => !textSearch
+      || f.name.toLowerCase().includes(cleanQuery)
+      || (f.relativePath || '').toLowerCase().includes(cleanQuery));
+
+    if (matchingFiles.length === 0 && (textSearch || !tree.length)) {
       const message = tagMatches ? `No notes tagged ${filterQuery.trim()}`
-        : cleanQuery ? 'No matching notes'
-        : 'Nothing open — every note is done or has no status';
+        : textSearch ? 'No matching notes'
+        : status === 'all' ? 'This folder is empty'
+        : 'No notes with this status here';
       container.appendChild(this._emptyState(message));
       return;
     }
 
     const pinnedFiles = matchingFiles.filter(f => this.isPinned(f.path));
-    const unpinnedFiles = matchingFiles.filter(f => !this.isPinned(f.path));
-
     if (pinnedFiles.length > 0) {
       container.appendChild(this._sectionTitle('Pinned'));
-      pinnedFiles.forEach(file => this._createNoteItemElement(file, container, true, activeNotePath, callbacks));
+      pinnedFiles.forEach(file => this._createNoteItemElement(file, container, { ...ctx, isPinned: true }));
     }
 
-    if (unpinnedFiles.length > 0) {
-      container.appendChild(this._sectionTitle(pinnedFiles.length > 0 ? 'All notes' : `Notes · ${unpinnedFiles.length}`));
-      unpinnedFiles.forEach(file => this._createNoteItemElement(file, container, false, activeNotePath, callbacks));
+    container.appendChild(this._sectionTitle(`${pinnedFiles.length ? 'All notes' : 'Notes'} · ${matchingFiles.length}`));
+    if (textSearch) {
+      matchingFiles.forEach(file => this._createNoteItemElement(file, container, { ...ctx, isPinned: this.isPinned(file.path) }));
+      return;
     }
+
+    // While a filter is active, open every folder so matches are never hidden in a collapsed one
+    const filtering = status !== 'all' || Boolean(tagMatches);
+    this._renderNodes(tree, container, 0, { ...ctx, collapsed: filtering ? new Set() : collapsed });
+  }
+
+  _renderNodes(nodes, parent, depth, ctx) {
+    for (const node of nodes) {
+      if (node.type === 'directory') this._createFolderElement(node, parent, depth, ctx);
+      else this._createNoteItemElement(node, parent, { ...ctx, isPinned: this.isPinned(node.path), depth, showFolder: false });
+    }
+  }
+
+  _createFolderElement(folder, parent, depth, ctx) {
+    const expanded = !ctx.collapsed.has(folder.path);
+    const node = document.createElement('div');
+    node.className = 'folder-node';
+    node.dataset.path = folder.path;
+
+    const row = document.createElement('div');
+    row.className = 'folder-item';
+    row.tabIndex = 0;
+    row.setAttribute('role', 'treeitem');
+    row.setAttribute('aria-expanded', String(expanded));
+    row.style.setProperty('--depth', depth);
+    row.title = folder.relativePath || folder.name;
+    row.innerHTML = `
+      <span class="folder-chevron">${icon('chevron', 14)}</span>
+      <span class="folder-icon">${icon(expanded ? 'folderOpen' : 'folder', 15)}</span>
+      <span class="folder-name"></span>
+      <span class="folder-count"></span>
+      <div class="folder-actions">
+        <button type="button" class="note-btn" data-action="scope" title="Show only this folder">${icon('focus', 15)}</button>
+      </div>
+    `;
+    row.querySelector('.folder-name').textContent = folder.name;
+    row.querySelector('.folder-count').textContent = String(folder.count);
+
+    const toggle = () => ctx.callbacks.onToggleFolder?.(folder.path);
+    row.addEventListener('click', (e) => {
+      const action = e.target.closest('[data-action]')?.dataset.action;
+      if (!action) return toggle();
+      e.stopPropagation();
+      if (action === 'scope') ctx.callbacks.onScopeFolder?.(folder.path);
+    });
+    row.addEventListener('keydown', (e) => {
+      if (e.target !== row) return;
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      else if ((e.key === 'ArrowLeft' && expanded) || (e.key === 'ArrowRight' && !expanded)) { e.preventDefault(); toggle(); }
+    });
+
+    node.appendChild(row);
+    if (expanded) {
+      const children = document.createElement('div');
+      children.className = 'folder-children';
+      children.setAttribute('role', 'group');
+      children.style.setProperty('--depth', depth);
+      this._renderNodes(folder.children, children, depth + 1, ctx);
+      node.appendChild(children);
+    }
+    parent.appendChild(node);
   }
 
   _emptyState(text) {
@@ -148,12 +218,14 @@ class NoteManager {
     return el;
   }
 
-  _createNoteItemElement(file, container, isPinned, activeNotePath, callbacks) {
+  _createNoteItemElement(file, container, { isPinned, activeNotePath, callbacks, depth = 0, showFolder = true }) {
     const itemEl = document.createElement('div');
     itemEl.className = `note-item${activeNotePath === file.path ? ' active' : ''}${isPinned ? ' pinned-note-item' : ''}`;
     itemEl.tabIndex = 0;
+    itemEl.style.setProperty('--depth', depth);
 
-    const folder = (file.relativePath || '').split(/[/\\]/).slice(0, -1).join(' / ');
+    // Inside the folder tree the location is already visible; flat lists show it under the title
+    const folder = showFolder ? (file.relativePath || '').split(/[/\\]/).slice(0, -1).join(' / ') : '';
 
     itemEl.innerHTML = `
       <div class="note-title-group" title="Double click to rename">

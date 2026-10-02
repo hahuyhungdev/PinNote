@@ -149,8 +149,21 @@
 
         <!-- Status Filter -->
         <div class="status-filter" role="group" aria-label="Filter notes by status">
-          <button type="button" id="filter-all" class="filter-btn" aria-pressed="true">All <span id="count-all" class="filter-count">0</span></button>
-          <button type="button" id="filter-open" class="filter-btn" aria-pressed="false" title="Notes marked To do, Doing or Waiting">Open <span id="count-open" class="filter-count">0</span></button>
+          <button type="button" id="filter-all" class="filter-btn" data-filter="all" aria-pressed="true">All <span class="filter-count">0</span></button>
+          <button type="button" id="filter-open" class="filter-btn" data-filter="open" aria-pressed="false" title="Notes marked To do, Doing or Waiting">Open <span class="filter-count">0</span></button>
+          <button type="button" id="filter-todo" class="filter-btn status-chip" data-filter="todo" aria-pressed="false">To do <span class="filter-count">0</span></button>
+          <button type="button" id="filter-doing" class="filter-btn status-chip" data-filter="doing" aria-pressed="false">Doing <span class="filter-count">0</span></button>
+          <button type="button" id="filter-waiting" class="filter-btn status-chip" data-filter="waiting" aria-pressed="false">Waiting <span class="filter-count">0</span></button>
+          <button type="button" id="filter-done" class="filter-btn status-chip" data-filter="done" aria-pressed="false">Done <span class="filter-count">0</span></button>
+        </div>
+
+        <!-- Folder the sidebar is narrowed to -->
+        <div id="folder-scope" class="folder-scope" hidden>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span id="folder-scope-path" class="folder-scope-path"></span>
+          <button type="button" id="btn-clear-scope" class="clear-scope-btn" title="Show all folders" aria-label="Show all folders">&times;</button>
         </div>
 
         <!-- Note List Tree -->
